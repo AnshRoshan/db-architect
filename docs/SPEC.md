@@ -29,7 +29,7 @@ Principles (non-negotiable):
 | 5 | SQL Server support | Next |
 | 6 | Workload evidence ingestion (pg_stat_statements, slow logs, explain, Mongo profiler) | Next |
 | 7 | Background job queue & workers (async, cancellable, retried scans) | Next |
-| 8 | Redis key-model analysis | Planned |
+| 8 | Redis key-model analysis | **Shipped** (key-model builder and rules unit-tested; the live SCAN path is type-checked only — no Redis server in the build sandbox) |
 | 9 | CI/CD drift detection & PR comments | Planned |
 | 10 | Provider-backed AI assistant + data-quality profiling | Planned |
 
@@ -49,7 +49,11 @@ src/lib/
   synth.ts          deterministic synthetic data from a schema
   advisor.ts        explainable database-selection scoring (10 engines × 21 capabilities)
   connectors.ts     adapter registry (validate / test / introspect / sample)
-  introspection.ts  PG, MySQL, Mongo introspection + bounded read-only sampling, SSRF guard
+  introspection.ts  MySQL, Mongo introspection + bounded read-only sampling, SSRF guard
+  pg-introspection.ts   PostgreSQL via pg_catalog: schema discovery, selection (list/glob/exclusion), cross-schema FKs
+  redis-model.ts        key → pattern inference and the Redis key model (pure; shared by import and live scan)
+  redis-introspection.ts  live Redis sampling (SCAN, TYPE, TTL, MEMORY USAGE — read-only)
+  architecture.ts   stores, roles, flows; schema dependency graph; cross-store links; ARCH rules (pure)
   auth.ts, secrets.ts, bootstrap.ts   sessions, RBAC, AES-256-GCM, self-healing schema
 src/app/            "/" landing page · "/app" workspace · "/api/v1/*" REST
 src/components/     connect-panel, transform-studio, advisor-panel, roadmap-panel, diagram-studio, …
@@ -62,7 +66,7 @@ tests/              vitest golden/unit suite
 interface Adapter {
   engine; live;
   validate(cfg); credentials(cfg); display(cfg);
-  test(creds); introspect(creds, opts); sample(creds, entity, limit, where?);
+  test(creds); discover(creds); introspect(creds, opts); sample(creds, entity, limit, where?);
 }
 ```
 
@@ -100,10 +104,10 @@ Engines scored: PostgreSQL, MySQL, SQLite, SQL Server, MongoDB, Redis, DynamoDB,
 
 | Capability | PostgreSQL | MySQL | SQLite | MongoDB | SQL Server | Redis |
 |---|---|---|---|---|---|---|
-| Schema import | ✅ | ✅ | ✅ | ✅ | ⏳ | — |
-| Live introspection | ✅ | ✅ | — (file) | ✅ | ⏳ | ⏳ |
-| Analysis rules | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ |
-| Diagram | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ |
+| Schema import | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ (key dump) |
+| Live introspection | ✅ all schemas | ✅ many databases | — (file) | ✅ | ⏳ | ✅ (not yet verified against a live server) |
+| Analysis rules | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ |
+| Diagram | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ |
 | Migration generation | ✅ | ✅ (non-transactional DDL flagged) | ✅ (rebuild guidance) | ✅ | ⏳ | — |
 | Transform source / target | ✅ | ✅ | ✅ | ✅ | ⏳ | — |
 | Advisor | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -143,3 +147,44 @@ Not yet covered: live MySQL/Mongo integration tests (need service containers), U
 - AI assistant is deterministic (no LLM provider adapter yet).
 - No password reset email / SSO.
 - Data-quality profiling (type histograms, orphan counts on live data) is planned.
+
+
+## 10. Schemas, datastores and system architecture
+
+A database is rarely one schema and a system is rarely one database. The model has three levels:
+
+```
+project (the system)
+  └─ datastore        name · engine · role · optional saved connection        (data_stores)
+       └─ version     one captured schema model, analysed and diagrammed      (schema_scans → schema_versions)
+            └─ namespace   schema (PostgreSQL) · database (MySQL) · logical db (Redis)
+                 └─ entity table · view · collection · keyspace
+  └─ data flow        declared movement between two stores                    (data_flows)
+```
+
+**Many schemas in one database**
+
+- *Discovery* (`POST /api/v1/connections/schemas`): every non-system schema with table/view counts, before anything is scanned. MySQL lists databases, Redis lists logical dbs.
+- *Selection*: `*` (default for PostgreSQL), a list (`public, billing`), a glob (`tenant_*`) or exclusions (`*, !audit`). A saved connection remembers the last selection and can be re-scanned with a different one.
+- *Introspection* reads `pg_catalog` by OID, so cross-schema and composite foreign keys are exact; views, materialized views, foreign and partitioned tables keep their kind (partitions fold into the parent); enums, extensions, comments, `INCLUDE` columns, expression/partial indexes, index scan counts and `reltuples` row estimates are captured. Foreign keys that leave the selection are kept and flagged.
+- *DDL import* keeps schema-qualified names, registers `CREATE SCHEMA`, and understands `ALTER TABLE [ONLY] … ADD CONSTRAINT` (the form `pg_dump` uses for every key).
+- *Rules* `PG-SCHEMA-001…006`: circular schema dependency, same table name in several schemas, shared-kernel schema, schema-per-tenant layout, one crowded schema with clear prefixes, foreign keys into an unscanned schema.
+
+**Many databases in one system**
+
+- Every import or scan becomes a version of a datastore: an explicit choice wins, then the saved connection it came from, then a store with the same engine and database name; otherwise a new store is created (first relational store → *system of record*, Redis → *cache*, others → *service database*). Designs saved from the Transformation Studio stay unattached.
+- *Roles*: system of record, service database, read replica, cache, sessions, queue, search index, analytics, archive, other.
+- *Flows* (declared, not observed): cache-aside, write-through, replication, CDC/outbox, batch ETL, events, dual write, reads-from.
+- *Cross-store links* (inferred from names — candidates, never constraints): a field named after an entity that only exists in another store (`reference`), the same entity in two stores (`duplicate`, with field overlap), a Redis keyspace addressed by another store's identifier (`cache`). Key types are compared across stores.
+- *Rules* `ARCH-001…010`: undeclared duplicate (001) / derived copy (002), incompatible key types (003), unenforceable references per store pair (004), no system of record (005), ephemeral store with keys that never expire (006), store without a schema (007), dual write or two-way flow (008), derived store without a source (009), isolated store (010).
+
+**Redis key model**
+
+Keys are grouped into patterns (`session:{session_id}`); each pattern is an entity with its data type, value shape (hash fields / JSON keys), TTL coverage, size and memory. Import a JSON key dump or plain `key type ttl size` lines, or sample live with `SCAN`. Values are inspected for shape and discarded. Rules `RD-TTL-001…003`, `RD-SIZE-001`, `RD-MEM-001`, `RD-TYPE-001`, `RD-NAME-001`, `RD-STRUCT-001`, `RD-EVICT-001/002`. Redis models are excluded from transformation and migration generation.
+
+**Known limits**
+
+- Cross-store links are name-based heuristics; confidence is shown and nothing is asserted as a constraint.
+- Flows are documentation supplied by the user; replication lag and real traffic are not measured.
+- Live Redis and live MySQL multi-database scans are implemented and type-checked but have not been run against real servers in the build sandbox. Live PostgreSQL multi-schema introspection is verified end to end (`e2e/architecture.e2e.mjs`).
+- MongoDB is still sampled one database per datastore.

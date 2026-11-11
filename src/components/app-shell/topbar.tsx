@@ -3,9 +3,17 @@
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, Command, Database, Menu, Plus, Search } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
+import { engineLabel } from "@/lib/engines";
 
 export interface ProjectOption { id: string; name: string; role?: string; organizationName?: string }
-export interface ScanOption { id: string; engine: string; status: string }
+export interface ScanOption { id: string; engine: string; status: string; label?: string | null; version?: number | null; storeName?: string | null }
+
+/** Versions grouped by the datastore they belong to, newest first. */
+function groupByStore(scans: ScanOption[]): [string, ScanOption[]][] {
+  const groups = new Map<string, ScanOption[]>();
+  for (const s of scans) { const key = s.storeName ?? "Unattached designs"; groups.set(key, [...(groups.get(key) ?? []), s]); }
+  return [...groups];
+}
 
 export default function TopBar({ project, projects, onProjectChange, scans, scanId, onScanChange, onMenu, onAddSchema, onOpenPalette, onNewProject, view, canWrite }: {
   project?: ProjectOption; projects: ProjectOption[]; onProjectChange: (id: string) => void;
@@ -43,9 +51,9 @@ export default function TopBar({ project, projects, onProjectChange, scans, scan
           <button onClick={onOpenPalette} className="rounded-lg border border-line p-2 text-ink-muted sm:hidden" aria-label="Search"><Search size={15} /></button>
 
           {scans.length > 0 && <div className="relative hidden sm:block">
-            <select value={scanId} onChange={(e) => onScanChange(e.target.value)} aria-label="Select schema version" className="max-w-[170px] appearance-none truncate rounded-lg border border-line bg-elevated py-1.5 pl-2.5 pr-7 text-xs text-ink outline-none hover:border-indigo-400/50 xl:max-w-[240px]">
+            <select value={scanId} onChange={(e) => onScanChange(e.target.value)} aria-label="Select schema version" className="max-w-[190px] appearance-none truncate rounded-lg border border-line bg-elevated py-1.5 pl-2.5 pr-7 text-xs text-ink outline-none hover:border-indigo-400/50 xl:max-w-[280px]">
               <option value="">Latest version</option>
-              {scans.map((s) => <option key={s.id} value={s.id}>{s.engine === "mongodb" ? "Mongo" : s.engine === "mysql" ? "MySQL" : s.engine === "sqlite" ? "SQLite" : "Postgres"} · {s.id.slice(0, 6)} · {s.status}</option>)}
+              {groupByStore(scans).map(([store, items]) => <optgroup key={store} label={store}>{items.map((s) => <option key={s.id} value={s.id}>{s.version ? `v${s.version} · ` : ""}{s.label ?? `${engineLabel(s.engine)} · ${s.id.slice(0, 6)}`}</option>)}</optgroup>)}
             </select>
             <ChevronDown size={12} className="pointer-events-none absolute right-2 top-2 text-ink-muted" />
           </div>}

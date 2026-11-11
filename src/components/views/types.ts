@@ -1,12 +1,12 @@
 // Shared view-model types for the workspace views.
-export type ScanRow = { id: string; engine: string; source: string; status: string; progress: number; currentStage?: string; stats?: Record<string, number>; createdAt?: string; error?: string | null };
+export type ScanRow = { id: string; engine: string; source: string; status: string; progress: number; currentStage?: string; stats?: Record<string, number>; createdAt?: string; error?: string | null; dataStoreId?: string | null; label?: string | null; version?: number | null; storeName?: string | null; storeRole?: string | null };
 export type FindingRow = Record<string, unknown>;
 export type FieldT = { name: string; type: string; nullable: boolean; defaultValue?: string | null; isPrimaryKey?: boolean; isUnique?: boolean; presence?: number; bsonTypes?: string[]; isArray?: boolean; arrayOf?: string | null; nested?: FieldT[]; comment?: string | null };
 export type IdxT = { name: string; columns: string[]; method?: string; unique: boolean; partial?: boolean; predicate?: string | null; definition?: string | null };
 export type ConT = { name: string; kind: string; columns: string[]; referencedEntity?: string | null; referencedColumns?: string[]; onDelete?: string | null; definition?: string | null };
 export type RelT = { id: string; name: string; fromEntity: string; fromColumns: string[]; toEntity: string; toColumns: string[]; cardinality: string; provenance: string; confidence?: number };
-export type EntityT = { id: string; name: string; shortName: string; namespace: string; kind: string; fields: FieldT[]; indexes: IdxT[]; constraints: ConT[]; comment?: string | null; rowEstimate?: number | null };
-export type ModelT = { database: string; engine: string; version?: string | null; namespaces: string[]; entities: EntityT[]; relationships: RelT[]; warnings: string[]; sourceMetadata: { limitations: string[]; sampleSize?: number | null } };
+export type EntityT = { id: string; name: string; shortName: string; namespace: string; kind: string; fields: FieldT[]; indexes: IdxT[]; constraints: ConT[]; comment?: string | null; rowEstimate?: number | null; metadata?: Record<string, unknown> };
+export type ModelT = { database: string; engine: string; version?: string | null; namespaces: string[]; entities: EntityT[]; relationships: RelT[]; warnings: string[]; sourceMetadata: { limitations: string[]; sampleSize?: number | null }; catalog?: { namespaces: { name: string; owner?: string | null; comment?: string | null; tables: number; views: number }[]; excludedNamespaces?: string[]; extensions?: string[]; enums?: { namespace: string; name: string; values: string[] }[]; settings?: Record<string, string | number | null> } };
 
 export function normFinding(f: FindingRow) {
   return {

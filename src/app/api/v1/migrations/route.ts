@@ -56,6 +56,7 @@ export async function POST(req: Request) {
     const sm = a.version.model as unknown as SchemaModel;
     const tm = b.version.model as unknown as SchemaModel;
     const engine: Engine = (body.engine as Engine) ?? tm.engine ?? sm.engine;
+    if (sm.engine === "redis" || tm.engine === "redis" || engine === "redis") return NextResponse.json({ error: "Migrations are generated for relational and document schemas. Redis key models can be compared in the Explorer, but not migrated." }, { status: 400 });
     const diff = diffModels(sm, tm);
     const gen = generateMigration(engine, diff, sm, tm);
     const validation = validateMigration(gen.up, engine);

@@ -102,6 +102,48 @@ export const databaseConnections = pgTable(
   (t) => [index("connections_project_idx").on(t.projectId)]
 );
 
+// ── Datastores: a project is a system of several databases ──────────
+export const dataStores = pgTable(
+  "data_stores",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 200 }).notNull(),
+    engine: varchar("engine", { length: 20 }).notNull(),
+    // primary | service | replica | cache | session | queue | search | analytics | archive | other
+    role: varchar("role", { length: 30 }).notNull().default("primary"),
+    description: text("description"),
+    databaseName: text("database_name"),
+    connectionId: uuid("connection_id").references(() => databaseConnections.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("data_stores_project_idx").on(t.projectId)]
+);
+
+// Declared movement of data between two stores (replication, CDC, cache-aside…).
+export const dataFlows = pgTable(
+  "data_flows",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fromStoreId: uuid("from_store_id")
+      .notNull()
+      .references(() => dataStores.id, { onDelete: "cascade" }),
+    toStoreId: uuid("to_store_id")
+      .notNull()
+      .references(() => dataStores.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 30 }).notNull().default("cdc"),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("data_flows_project_idx").on(t.projectId)]
+);
+
 // ── Scans & versions ────────────────────────────────────────────────
 export const schemaScans = pgTable(
   "schema_scans",
@@ -113,6 +155,7 @@ export const schemaScans = pgTable(
     connectionId: uuid("connection_id").references(() => databaseConnections.id, {
       onDelete: "set null",
     }),
+    dataStoreId: uuid("data_store_id").references(() => dataStores.id, { onDelete: "set null" }),
     engine: varchar("engine", { length: 20 }).notNull(),
     source: varchar("source", { length: 30 }).notNull().default("upload"), // upload | introspection | dsl
     status: varchar("status", { length: 30 }).notNull().default("created"),

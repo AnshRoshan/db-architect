@@ -83,7 +83,7 @@ export interface EntityModel {
   name: string; // original name incl. schema prefix for pg e.g. public.orders
   shortName: string;
   namespace: string; // schema name or db name
-  kind: "table" | "view" | "materialized_view" | "collection" | "foreign_table";
+  kind: "table" | "view" | "materialized_view" | "collection" | "foreign_table" | "keyspace";
   engine: Engine;
   fields: FieldModel[];
   indexes: IndexModel[];
@@ -91,6 +91,23 @@ export interface EntityModel {
   comment?: string | null;
   rowEstimate?: number | null;
   metadata: Record<string, unknown>;
+}
+
+/** Catalog-level facts about the namespaces (schemas / databases / logical dbs) of a store. */
+export interface NamespaceInfo {
+  name: string;
+  owner?: string | null;
+  comment?: string | null;
+  tables: number;
+  views: number;
+}
+export interface SchemaCatalog {
+  namespaces: NamespaceInfo[];
+  /** Namespaces that exist on the server but were not part of this scan. */
+  excludedNamespaces?: string[];
+  extensions?: string[];
+  enums?: { namespace: string; name: string; values: string[] }[];
+  settings?: Record<string, string | number | null>;
 }
 
 export interface SchemaModel {
@@ -103,6 +120,7 @@ export interface SchemaModel {
   relationships: RelationshipModel[];
   dependencies: { from: string; to: string; kind: string }[];
   warnings: string[];
+  catalog?: SchemaCatalog;
   sourceMetadata: {
     source: string;
     importedAt: string;

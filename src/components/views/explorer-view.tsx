@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeftRight, ArrowRight, Box, Braces, ChevronRight, Database, FileText, KeyRound, Link2, ListTree, Network, ScanSearch, Sparkles, Table2 } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Box, Braces, Eye, FolderTree, Puzzle, Timer, ChevronRight, Database, FileText, KeyRound, Link2, ListTree, Network, ScanSearch, Sparkles, Table2 } from "lucide-react";
 import { Card, Chip, EmptyState, EngineChip, SearchInput, Segmented, SeverityChip, TypeLabel, sev } from "@/components/ui";
+import { namespaceLabel } from "@/lib/engines";
 import type { EntityT, FieldT, Finding, ModelT } from "./types";
 
 type Tab = "fields" | "indexes" | "constraints" | "relationships" | "findings";
@@ -30,7 +31,8 @@ export default function ExplorerView({ model, findings, onOpenDiagram, onOpenAna
     const needle = q.trim().toLowerCase();
     return (model?.entities ?? []).filter((e) =>
       (ns === "all" || e.namespace === ns) && (kind === "all" || e.kind === kind) &&
-      (!needle || e.name.toLowerCase().includes(needle) || e.fields.some((f) => f.name.toLowerCase().includes(needle))));
+      (!needle || e.name.toLowerCase().includes(needle) || e.fields.some((f) => f.name.toLowerCase().includes(needle))))
+      .sort((a, b) => (model?.namespaces.indexOf(a.namespace) ?? 0) - (model?.namespaces.indexOf(b.namespace) ?? 0));
   }, [model, q, ns, kind]);
 
   useEffect(() => { if (entities.length && !entities.some((e) => e.name === selected)) setSelected(entities[0].name); }, [entities, selected]);
@@ -39,6 +41,10 @@ export default function ExplorerView({ model, findings, onOpenDiagram, onOpenAna
 
   const current = model.entities.find((e) => e.name === selected) ?? null;
   const kinds = [...new Set(model.entities.map((e) => e.kind))];
+  const nsWord = namespaceLabel(model.engine, true);
+  const grouped = model.namespaces.length > 1 && ns === "all";
+  const nsCounts = new Map<string, number>();
+  for (const e of entities) nsCounts.set(e.namespace, (nsCounts.get(e.namespace) ?? 0) + 1);
   const totalFields = model.entities.reduce((a, e) => a + e.fields.length, 0);
   const totalIdx = model.entities.reduce((a, e) => a + e.indexes.length, 0);
 
@@ -47,7 +53,7 @@ export default function ExplorerView({ model, findings, onOpenDiagram, onOpenAna
       {/* schema summary strip */}
       <Card className="flex flex-wrap items-center gap-x-6 gap-y-3 !py-4">
         <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"><Database size={19} /></div><div><div className="font-mono text-sm font-bold text-ink">{model.database}</div><div className="mt-0.5 flex items-center gap-2"><EngineChip engine={model.engine} />{model.version && <span className="text-[11px] text-ink-muted">v{model.version.split(" ")[0]}</span>}</div></div></div>
-        {[["Entities", model.entities.length], ["Fields", totalFields], ["Indexes", totalIdx], ["Relationships", model.relationships.length], ["Namespaces", model.namespaces.length]].map(([l, v]) => <div key={String(l)}><div className="text-lg font-bold tabular-nums text-ink">{v}</div><div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{l}</div></div>)}
+        {[["Entities", model.entities.length], ["Fields", totalFields], ["Indexes", totalIdx], ["Relationships", model.relationships.length], [nsWord, model.namespaces.length]].map(([l, v]) => <div key={String(l)}><div className="text-lg font-bold tabular-nums text-ink">{v}</div><div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{l}</div></div>)}
         <div className="ml-auto flex gap-2"><button onClick={onOpenDiagram} className="flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-muted"><Network size={14} />Diagram</button><button onClick={onOpenAnalysis} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500"><ScanSearch size={14} />{findings.length} findings</button></div>
       </Card>
 
@@ -57,25 +63,25 @@ export default function ExplorerView({ model, findings, onOpenDiagram, onOpenAna
           <div className="space-y-2.5 border-b border-line p-3">
             <SearchInput value={q} onChange={setQ} placeholder="Search tables and fields…" />
             <div className="flex gap-2">
-              <select value={ns} onChange={(e) => setNs(e.target.value)} aria-label="Namespace" className="min-w-0 flex-1 rounded-lg border border-line bg-elevated px-2 py-1.5 text-xs text-ink"><option value="all">All namespaces</option>{model.namespaces.map((n) => <option key={n}>{n}</option>)}</select>
+              <select value={ns} onChange={(e) => setNs(e.target.value)} aria-label="Namespace" className="min-w-0 flex-1 rounded-lg border border-line bg-elevated px-2 py-1.5 text-xs text-ink"><option value="all">All {nsWord}</option>{model.namespaces.map((n) => <option key={n}>{n}</option>)}</select>
               {kinds.length > 1 && <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind" className="min-w-0 flex-1 rounded-lg border border-line bg-elevated px-2 py-1.5 text-xs text-ink"><option value="all">All kinds</option>{kinds.map((k) => <option key={k} value={k}>{k.replace("_", " ")}</option>)}</select>}
             </div>
             <div className="text-[11px] text-ink-muted">{entities.length} of {model.entities.length} entities</div>
           </div>
           <div className="scroll-thin flex-1 overflow-y-auto p-2">
-            {entities.map((e) => {
+            {entities.map((e, idx) => {
               const f = findingsByEntity.get(e.name) ?? [];
               const worst = f.length ? f.reduce((a, b) => (["critical", "high", "medium", "low", "info"].indexOf(a.severity) <= ["critical", "high", "medium", "low", "info"].indexOf(b.severity) ? a : b)).severity : null;
               const active = current?.name === e.name;
               return (
-                <button key={e.id} onClick={() => setSelected(e.name)} aria-current={active} className={`group relative mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${active ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-400/40" : "hover:bg-muted"}`}>
-                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${e.kind === "collection" ? "bg-violet-500/12 text-violet-600 dark:text-violet-300" : "bg-sky-500/12 text-sky-600 dark:text-sky-300"}`}>{e.kind === "collection" ? <Braces size={15} /> : <Table2 size={15} />}</div>
+                <Fragment key={e.id}>{grouped && (idx === 0 || entities[idx - 1].namespace !== e.namespace) && <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-center gap-2 border-b border-line/60 bg-elevated/95 px-4 py-1.5 backdrop-blur"><FolderTree size={12} className="text-indigo-500" /><code className="font-mono text-[11px] font-bold text-ink">{e.namespace}</code><span className="ml-auto text-[10px] tabular-nums text-ink-muted">{nsCounts.get(e.namespace)}</span></div>}<button onClick={() => setSelected(e.name)} aria-current={active} className={`group relative mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${active ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-400/40" : "hover:bg-muted"}`}>
+                  <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${e.kind === "collection" ? "bg-violet-500/12 text-violet-600 dark:text-violet-300" : "bg-sky-500/12 text-sky-600 dark:text-sky-300"}`}><KindIcon kind={e.kind} size={15} /></div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5"><span className="truncate font-mono text-[13px] font-semibold text-ink">{e.shortName}</span>{worst && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${sev(worst).dot}`} title={`${f.length} finding(s)`} />}</div>
                     <div className="mt-0.5 truncate text-[11px] text-ink-muted">{e.fields.length} fields · {e.indexes.length} idx · {degree.get(e.name) ?? 0} links{e.rowEstimate ? ` · ~${Intl.NumberFormat("en", { notation: "compact" }).format(e.rowEstimate)} rows` : ""}</div>
                   </div>
                   <ChevronRight size={14} className={`shrink-0 transition ${active ? "text-indigo-500" : "text-ink-muted/40 group-hover:text-ink-muted"}`} />
-                </button>
+                </button></Fragment>
               );
             })}
             {!entities.length && <p className="p-6 text-center text-xs text-ink-muted">Nothing matches “{q}”.</p>}
@@ -88,6 +94,16 @@ export default function ExplorerView({ model, findings, onOpenDiagram, onOpenAna
         </AnimatePresence>
       </div>
 
+      {model.catalog && ((model.catalog.excludedNamespaces?.length ?? 0) > 0 || (model.catalog.extensions?.length ?? 0) > 0 || (model.catalog.enums?.length ?? 0) > 0) && (
+        <Card className="!py-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            {(model.catalog.excludedNamespaces?.length ?? 0) > 0 && <div><div className="flex items-center gap-1.5 text-xs font-bold text-ink"><FolderTree size={13} />Not in this scan</div><p className="mt-1 text-[11px] text-ink-muted">These {nsWord} exist on the server but were not selected.</p><div className="mt-2 flex flex-wrap gap-1">{model.catalog.excludedNamespaces!.slice(0, 24).map((n) => <code key={n} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-ink-muted">{n}</code>)}</div></div>}
+            {(model.catalog.extensions?.length ?? 0) > 0 && <div><div className="flex items-center gap-1.5 text-xs font-bold text-ink"><Puzzle size={13} />Extensions</div><div className="mt-2 flex flex-wrap gap-1">{model.catalog.extensions!.map((n) => <code key={n} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-ink">{n}</code>)}</div></div>}
+            {(model.catalog.enums?.length ?? 0) > 0 && <div><div className="flex items-center gap-1.5 text-xs font-bold text-ink"><Braces size={13} />Enum types</div><div className="mt-2 space-y-1">{model.catalog.enums!.slice(0, 8).map((en) => <div key={`${en.namespace}.${en.name}`} className="truncate text-[11px] text-ink-muted" title={en.values.join(", ")}><code className="font-mono font-semibold text-ink">{en.namespace}.{en.name}</code> · {en.values.slice(0, 5).join(", ")}{en.values.length > 5 ? "…" : ""}</div>)}</div></div>}
+          </div>
+        </Card>
+      )}
+
       {(model.warnings.length > 0 || model.sourceMetadata.limitations.length > 0) && (
         <Card className="!py-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -98,6 +114,26 @@ export default function ExplorerView({ model, findings, onOpenDiagram, onOpenAna
       )}
     </div>
   );
+}
+
+function KindIcon({ kind, size }: { kind: string; size: number }) {
+  if (kind === "collection") return <Braces size={size} />;
+  if (kind === "keyspace") return <KeyRound size={size} />;
+  if (kind === "view" || kind === "materialized_view") return <Eye size={size} />;
+  return <Table2 size={size} />;
+}
+
+/** Redis keyspaces: data type, TTL coverage and size at a glance. */
+function KeyspaceChips({ e }: { e: EntityT }) {
+  const meta = (e.metadata ?? {}) as { redisType?: string; ttl?: { known?: number; with?: number; avg?: number }; size?: { avg: number; max: number } | null; memory?: { avg: number; max: number } | null };
+  const known = meta.ttl?.known ?? 0, withTtl = meta.ttl?.with ?? 0;
+  const fmt = (sec: number) => (sec >= 86400 ? `${Math.round(sec / 86400)}d` : sec >= 3600 ? `${Math.round(sec / 3600)}h` : sec >= 60 ? `${Math.round(sec / 60)}m` : `${sec}s`);
+  return <>
+    {meta.redisType && <Chip className="bg-red-500/12 text-red-700 ring-red-500/25 dark:text-red-300">{meta.redisType}</Chip>}
+    {known > 0 && <Chip className={withTtl === known ? "bg-emerald-500/12 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300" : withTtl === 0 ? "bg-amber-500/12 text-amber-700 ring-amber-500/25 dark:text-amber-300" : "bg-orange-500/12 text-orange-700 ring-orange-500/25 dark:text-orange-300"}><Timer size={10} />{withTtl === known ? `TTL ~${fmt(meta.ttl?.avg ?? 0)}` : withTtl === 0 ? "no TTL" : `TTL on ${withTtl}/${known}`}</Chip>}
+    {meta.size?.max ? <Chip className="bg-muted text-ink ring-line">max {meta.size.max.toLocaleString()} {meta.redisType === "string" ? "bytes" : "items"}</Chip> : null}
+    {meta.memory?.avg ? <Chip className="bg-muted text-ink ring-line">~{meta.memory.avg >= 1048576 ? `${(meta.memory.avg / 1048576).toFixed(1)} MB` : meta.memory.avg >= 1024 ? `${Math.round(meta.memory.avg / 1024)} KB` : `${meta.memory.avg} B`}/key</Chip> : null}
+  </>;
 }
 
 function FieldRow({ f, fks, depth = 0 }: { f: FieldT; fks: Set<string>; depth?: number }) {
@@ -135,9 +171,9 @@ function EntityDetail({ e, model, findings, onSelect }: { e: EntityT; model: Mod
     <Card padded={false} className="overflow-hidden">
       <div className="border-b border-line bg-gradient-to-br from-indigo-500/[.06] to-transparent p-5">
         <div className="flex flex-wrap items-start gap-3">
-          <div className={`grid h-11 w-11 place-items-center rounded-xl ${e.kind === "collection" ? "bg-violet-500/15 text-violet-600 dark:text-violet-300" : "bg-sky-500/15 text-sky-600 dark:text-sky-300"}`}>{e.kind === "collection" ? <Braces size={20} /> : <Table2 size={20} />}</div>
+          <div className={`grid h-11 w-11 place-items-center rounded-xl ${e.kind === "collection" ? "bg-violet-500/15 text-violet-600 dark:text-violet-300" : "bg-sky-500/15 text-sky-600 dark:text-sky-300"}`}><KindIcon kind={e.kind} size={20} /></div>
           <div className="min-w-0 flex-1"><div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{e.namespace} · {e.kind.replace("_", " ")}</div><h2 className="mt-0.5 break-all font-mono text-xl font-bold text-ink">{e.shortName}</h2>{e.comment && <p className="mt-1 text-sm text-ink-muted">{e.comment}</p>}</div>
-          <div className="flex flex-wrap gap-1.5">{pk.length ? <Chip className="bg-amber-500/12 text-amber-700 ring-amber-500/25 dark:text-amber-300"><KeyRound size={10} />PK ({pk.join(", ")})</Chip> : <Chip className="bg-red-500/12 text-red-700 ring-red-500/25 dark:text-red-300">No primary key</Chip>}{e.rowEstimate ? <Chip className="bg-muted text-ink ring-line">~{e.rowEstimate.toLocaleString()} rows</Chip> : null}</div>
+          <div className="flex flex-wrap gap-1.5">{pk.length ? <Chip className="bg-amber-500/12 text-amber-700 ring-amber-500/25 dark:text-amber-300"><KeyRound size={10} />PK ({pk.join(", ")})</Chip> : <Chip className="bg-red-500/12 text-red-700 ring-red-500/25 dark:text-red-300">No primary key</Chip>}{e.rowEstimate ? <Chip className="bg-muted text-ink ring-line">~{e.rowEstimate.toLocaleString()} {e.kind === "keyspace" ? "keys" : "rows"}</Chip> : null}{e.kind === "keyspace" && <KeyspaceChips e={e} />}</div>
         </div>
         <div className="mt-4 overflow-x-auto">
           <Segmented<Tab> layoutId={`entity-tab`} value={tab} onChange={setTab} options={[
@@ -152,7 +188,7 @@ function EntityDetail({ e, model, findings, onSelect }: { e: EntityT; model: Mod
       <div className="min-h-[300px]">
         {tab === "fields" && (
           <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left">
-            <thead><tr className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted"><th className="py-2.5 pl-4 pr-2">Field</th><th className="px-2">Type</th><th className="px-2">Null</th><th className="px-2">Default</th><th className="py-2.5 pl-2 pr-4">{model.engine === "mongodb" ? "Presence" : "Notes"}</th></tr></thead>
+            <thead><tr className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted"><th className="py-2.5 pl-4 pr-2">Field</th><th className="px-2">Type</th><th className="px-2">Null</th><th className="px-2">Default</th><th className="py-2.5 pl-2 pr-4">{model.engine === "mongodb" || model.engine === "redis" ? "Presence" : "Notes"}</th></tr></thead>
             <tbody>{e.fields.map((f) => <FieldRow key={f.name} f={f} fks={fks} />)}</tbody>
           </table></div>
         )}

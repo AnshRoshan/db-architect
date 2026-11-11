@@ -59,7 +59,7 @@ export function HistoryView({ projectId, scans, currentScanId, onOpen, reload }:
   const [q, setQ] = useState("");
   useEffect(() => { if (projectId) fetch(`/api/v1/connections?projectId=${projectId}`).then((x) => x.json()).then((r) => setConns(r.connections ?? [])).catch(() => undefined); }, [projectId]);
   useEffect(() => { reload(); }, [reload]);
-  const filtered = useMemo(() => scans.filter((s) => !q || `${s.id} ${s.engine} ${s.source} ${s.status}`.toLowerCase().includes(q.toLowerCase())), [scans, q]);
+  const filtered = useMemo(() => scans.filter((s) => !q || `${s.id} ${s.engine} ${s.source} ${s.status} ${s.label ?? ""} ${s.storeName ?? ""}`.toLowerCase().includes(q.toLowerCase())), [scans, q]);
   if (!scans.length && !conns.length) return <EmptyState icon={History} title="No history yet" hint="Every import, live scan and transformation saves an immutable schema version here." />;
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
@@ -73,7 +73,7 @@ export function HistoryView({ projectId, scans, currentScanId, onOpen, reload }:
               <button onClick={() => onOpen(s.id)} className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border p-3 text-left transition ${current ? "border-indigo-400/50 bg-indigo-500/[.06]" : "border-line hover:bg-muted"}`}>
                 <EngineChip engine={s.engine} /><span className="text-xs font-semibold capitalize text-ink">{s.source === "introspection" ? "Live scan" : s.source === "transform" ? "Transform design" : "Import"}</span><StatusChip status={s.status} />{current && <Chip className="bg-indigo-500/12 text-indigo-700 ring-indigo-500/25 dark:text-indigo-300">viewing</Chip>}
                 <span className="ml-auto flex items-center gap-1 text-[11px] text-ink-muted"><Clock size={11} />{rel(s.createdAt)}</span>
-                <div className="w-full font-mono text-[11px] text-ink-muted">{s.id.slice(0, 8)}{s.stats ? ` · ${s.stats.entities ?? 0} entities · ${s.stats.fields ?? 0} fields · ${s.stats.indexes ?? 0} indexes · ${s.stats.findings ?? 0} findings` : ""}{s.error ? ` · ${s.error.slice(0, 80)}` : ""}</div>
+                <div className="w-full font-mono text-[11px] text-ink-muted">{s.storeName ? `${s.storeName} · ` : ""}{s.label ? `${s.label} · ` : ""}{s.id.slice(0, 8)}{s.stats ? ` · ${s.stats.entities ?? 0} entities · ${s.stats.fields ?? 0} fields · ${s.stats.indexes ?? 0} indexes · ${s.stats.findings ?? 0} findings` : ""}{s.error ? ` · ${s.error.slice(0, 80)}` : ""}</div>
               </button>
             </motion.li>); })}
           {!filtered.length && <p className="py-8 text-center text-sm text-ink-muted">No versions match.</p>}

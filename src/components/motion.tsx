@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type PointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { motion, useInView, useMotionValue, useReducedMotion, useSpring, useTransform, type Variants } from "framer-motion";
 
 export const fadeUp: Variants = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, transition: { duration: .6, ease: [.2, .8, .2, 1] } } };
@@ -81,4 +81,24 @@ export function Magnetic({ children, className = "", strength = 14 }: { children
 /** Page/view transition wrapper used inside the app shell. */
 export function ViewFade({ children, k }: { children: ReactNode; k: string }) {
   return <motion.div key={k} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: .28, ease: [.2, .8, .2, 1] }}>{children}</motion.div>;
+}
+
+/** Card whose soft highlight follows the pointer (pairs with the `.spotlight` class). */
+export function Spotlight({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+  };
+  return <div className={`spotlight ${className}`} onPointerMove={move}>{children}</div>;
+}
+
+/** Headline that resolves word by word when it scrolls into view. */
+export function WordReveal({ text, className = "", delay = 0 }: { text: string; className?: string; delay?: number }) {
+  const words = text.split(" ");
+  return (
+    <motion.span initial="hidden" whileInView="show" viewport={{ once: true, amount: .6 }} variants={{ hidden: {}, show: { transition: { staggerChildren: .045, delayChildren: delay } } }} className={className} aria-label={text}>
+      {words.map((w, i) => <motion.span key={i} aria-hidden variants={{ hidden: { opacity: 0, y: 12, filter: "blur(6px)" }, show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: .5, ease: [.2, .8, .2, 1] } } }} className="inline-block whitespace-pre">{w}{i < words.length - 1 ? " " : ""}</motion.span>)}
+    </motion.span>
+  );
 }

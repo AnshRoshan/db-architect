@@ -174,6 +174,31 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS audit_project_idx ON audit_logs (project_id);
+CREATE TABLE IF NOT EXISTS data_stores (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name varchar(200) NOT NULL,
+  engine varchar(20) NOT NULL,
+  role varchar(30) NOT NULL DEFAULT 'primary',
+  description text,
+  database_name text,
+  connection_id uuid REFERENCES database_connections(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS data_stores_project_idx ON data_stores (project_id);
+CREATE TABLE IF NOT EXISTS data_flows (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  from_store_id uuid NOT NULL REFERENCES data_stores(id) ON DELETE CASCADE,
+  to_store_id uuid NOT NULL REFERENCES data_stores(id) ON DELETE CASCADE,
+  kind varchar(30) NOT NULL DEFAULT 'cdc',
+  description text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS data_flows_project_idx ON data_flows (project_id);
+ALTER TABLE schema_scans ADD COLUMN IF NOT EXISTS data_store_id uuid REFERENCES data_stores(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS scans_store_idx ON schema_scans (data_store_id);
 `;
 
 export function ensureSchema(): Promise<void> {

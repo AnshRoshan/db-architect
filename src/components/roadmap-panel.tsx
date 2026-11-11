@@ -6,9 +6,9 @@ import { CheckCircle2, CircleDashed, Clock, Rocket } from "lucide-react";
 import { MATRIX_ENGINES, SPEC_ITEMS, SUPPORT_MATRIX, TOP_10, type Status, type Support } from "@/lib/roadmap";
 
 const STATUS: Record<Status, { label: string; cls: string; Icon: typeof Clock }> = {
-  shipped: { label: "Shipped", cls: "bg-emerald-50 text-emerald-700", Icon: CheckCircle2 },
-  in_progress: { label: "In progress", cls: "bg-indigo-50 text-indigo-700", Icon: Rocket },
-  next: { label: "Next up", cls: "bg-amber-50 text-amber-700", Icon: Clock },
+  shipped: { label: "Shipped", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300", Icon: CheckCircle2 },
+  in_progress: { label: "In progress", cls: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300", Icon: Rocket },
+  next: { label: "Next up", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300", Icon: Clock },
   planned: { label: "Planned", cls: "bg-muted text-ink-muted", Icon: CircleDashed },
 };
 const SUP: Record<Support, [string, string]> = { full: ["●", "text-emerald-600"], partial: ["◐", "text-amber-500"], planned: ["○", "text-ink-muted"], none: ["—", "text-ink-muted/60"] };
@@ -28,7 +28,7 @@ export default function RoadmapPanel() {
 
       <section className="surface p-5">
         <h3 className="text-sm font-bold">Top 10 priorities</h3><p className="mt-1 text-xs text-ink-muted">Ranked by user value × engineering leverage. We build the top few first and finish them properly.</p>
-        <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: .05 } } }} className="mt-4 grid gap-3 lg:grid-cols-2">{TOP_10.map((t) => <motion.article variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }} key={t.rank} className={`rounded-xl border p-4 ${t.status === "shipped" ? "border-emerald-100 bg-emerald-50/30" : "border-line/60"}`}><div className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-900 text-xs font-bold text-white">{t.rank}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h4 className="text-[13px] font-bold leading-5">{t.title}</h4><Pill s={t.status} /></div><p className="mt-1 text-xs leading-5 text-ink-muted">{t.why}</p><div className="mt-2 flex flex-wrap gap-1.5">{t.scope.map((s) => <span key={s} className="rounded-md bg-elevated px-2 py-0.5 text-[10px] text-ink-muted ring-1 ring-line">{s}</span>)}</div></div></div></motion.article>)}</motion.div>
+        <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: .05 } } }} className="mt-4 grid gap-3 lg:grid-cols-2">{TOP_10.map((t) => <motion.article variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }} key={t.rank} className={`rounded-xl border p-4 ${t.status === "shipped" ? "border-emerald-500/20 bg-emerald-500/10" : "border-line/60"}`}><div className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-900 text-xs font-bold text-white">{t.rank}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h4 className="text-[13px] font-bold leading-5">{t.title}</h4><Pill s={t.status} /></div><p className="mt-1 text-xs leading-5 text-ink-muted">{t.why}</p><div className="mt-2 flex flex-wrap gap-1.5">{t.scope.map((s) => <span key={s} className="rounded-md bg-elevated px-2 py-0.5 text-[10px] text-ink-muted ring-1 ring-line">{s}</span>)}</div></div></div></motion.article>)}</motion.div>
       </section>
 
       <section className="surface p-5">

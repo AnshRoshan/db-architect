@@ -312,6 +312,9 @@ export function parseSqlDdl(sql: string, database = "imported_db", dialectHint?:
       parseAlterTable(stmt, model, warnings);
     } else if (upper.startsWith("CREATE VIEW") || upper.startsWith("CREATE MATERIALIZED VIEW") || upper.startsWith("CREATE OR REPLACE VIEW")) {
       warnings.push(`View preserved as metadata only: ${stmt.slice(0, 80)}`);
+    } else if (/^CREATE SCHEMA/.test(upper)) {
+      const sm = stmt.match(/^CREATE SCHEMA\s+(?:IF NOT EXISTS\s+)?"?([A-Za-z0-9_]+)"?/i);
+      if (sm && !model.namespaces.includes(sm[1])) model.namespaces.push(sm[1]);
     } else {
       const dbm = stmt.match(/^(?:CREATE DATABASE(?: IF NOT EXISTS)?|USE)\s+"?([A-Za-z0-9_]+)"?/i);
       if (dbm) dbName = dbm[1];
@@ -577,26 +580,32 @@ function parseCreateIndex(stmt: string, model: SchemaModel, warnings: string[]) 
 }
 
 function parseAlterTable(stmt: string, model: SchemaModel, warnings: string[]) {
-  const m = stmt.match(/ALTER TABLE\s+(?:IF EXISTS\s+)?([a-zA-Z0-9_."]+)\s+([\s\S]*)$/i);
+  // pg_dump writes every key as `ALTER TABLE ONLY schema.table ADD CONSTRAINT …`
+  const m = stmt.match(/ALTER TABLE\s+(?:IF EXISTS\s+)?(?:ONLY\s+)?([a-zA-Z0-9_."]+)\s+([\s\S]*)$/i);
   if (!m) {
     warnings.push("Could not parse ALTER TABLE");
     return;
   }
   const table = m[1].replace(/"/g, "");
-  const action = m[2].trim();
   const full = table.includes(".") ? table : `public.${table}`;
   const ent = model.entities.find((e) => e.name === full);
   if (!ent) {
     warnings.push(`ALTER TABLE on unknown table ${full}`);
     return;
   }
-  let am: RegExpMatchArray | null;
-  if ((am = action.match(/ADD\s+(?:COLUMN\s+)?"?([a-zA-Z0-9_]+)"?\s+(.*)/i))) {
-    entityPushColumn(ent, am[1], am[2]);
-  } else if ((am = action.match(/ADD\s+(CONSTRAINT\s+.*|PRIMARY KEY.*|FOREIGN KEY.*|UNIQUE.*|CHECK.*)/i))) {
-    parseTableConstraint(am[1], ent, warnings);
-  } else {
-    warnings.push(`ALTER TABLE action preserved as warning: ${action.slice(0, 80)}`);
+  // mysqldump chains several actions in one statement, separated by top-level commas
+  for (const part of splitTopLevel(m[2])) {
+    const action = part.trim();
+    if (!action) continue;
+    let am: RegExpMatchArray | null;
+    // Constraints first: "ADD CONSTRAINT x …" must never be read as a column named CONSTRAINT.
+    if ((am = action.match(/^ADD\s+((?:CONSTRAINT|PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|EXCLUDE|KEY|INDEX|FULLTEXT|SPATIAL)\b[\s\S]*)/i))) {
+      parseTableConstraint(am[1], ent, warnings);
+    } else if ((am = action.match(/^ADD\s+(?:COLUMN\s+)?(?:IF NOT EXISTS\s+)?"?([a-zA-Z0-9_]+)"?\s+(.*)/i))) {
+      entityPushColumn(ent, am[1], am[2]);
+    } else {
+      warnings.push(`ALTER TABLE action preserved as warning: ${action.slice(0, 80)}`);
+    }
   }
 }
 

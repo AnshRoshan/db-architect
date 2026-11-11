@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "DB Architect — Database Architecture Intelligence",
-  description: "Introspect, visualize, analyze, transform and migrate PostgreSQL, MySQL, SQLite and MongoDB schemas — and choose the right database for the workload.",
+  description: "Map every schema and every database your system runs on — PostgreSQL, MySQL, SQLite, MongoDB and Redis — then analyze, transform, migrate and choose the right engine.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

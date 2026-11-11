@@ -192,7 +192,7 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (user
               </div>
             </label>
             {error && (
-              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -222,7 +222,7 @@ export default function AuthScreen({ onAuthenticated }: { onAuthenticated: (user
           <button
             onClick={enterDemo}
             disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-elevated py-3 text-sm font-bold text-ink transition hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-elevated py-3 text-sm font-bold text-ink transition hover:border-indigo-500/30 hover:bg-indigo-500/10 disabled:opacity-60"
           >
             {busy ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={16} className="text-indigo-500" />} Explore the demo workspace
           </button>

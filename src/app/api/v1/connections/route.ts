@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       ...encrypted,
       maskedConnection: shown.masked,
       sslMode: String(body.sslMode ?? "prefer"),
-      schemaSelection: String(body.schemaSelection ?? body.schema ?? "public"),
+      schemaSelection: String(body.schemaSelection ?? body.schema ?? (engine === "postgres" ? "*" : "")).slice(0, 2000),
       readOnly: true,
       status: "created",
     }).returning();

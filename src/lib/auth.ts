@@ -190,7 +190,7 @@ export function apiError(error: unknown) {
   }
   message = message
     .replace(/\/\/[^@/\s]+:[^@/\s]+@/g, "//***:***@")
-    .replace(/password[^,;]*/gi, "password=***")
+    .replace(/\b(password|passwd|pwd)\s*[=:]\s*[^\s,;&]+/gi, "$1=***")
     .replace(/\b(scrypt|mongodb\+srv):\/\/\S+/gi, "$1://***")
     .trim();
   if (!message) message = "Unexpected server error";

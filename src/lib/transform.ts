@@ -541,9 +541,10 @@ function planMongoToSql(model: SchemaModel, target: SqlDialect, opts: Opts): Cor
 
 // ── runbook & validation ───────────────────────────────────────────
 function buildRunbook(src: Engine, dst: Engine, core: Core): { runbook: RunbookPhase[]; validationQueries: string[] } {
-  const drivers = (e: Engine) => ({ postgres: "pg", mysql: "mysql2", sqlite: "better-sqlite3", mongodb: "mongodb" } as const)[e];
+  const drivers = (e: Engine) => ({ postgres: "pg", mysql: "mysql2", sqlite: "better-sqlite3", mongodb: "mongodb", redis: "ioredis" } as const)[e];
   const target = ENGINES[dst].label;
   const cdc: Record<Engine, string> = {
+    redis: "keyspace notifications (not a durable change stream)",
     postgres: "Stream changes with logical replication / Debezium (wal2json or pgoutput) while the backfill runs.",
     mysql: "Stream changes from the binlog (Debezium or gh-ost style tooling) while the backfill runs.",
     mongodb: "Tail change streams (requires a replica set) to replay writes made during the backfill.",

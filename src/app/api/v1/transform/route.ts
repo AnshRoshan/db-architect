@@ -67,6 +67,7 @@ export async function POST(req: Request) {
     const detail = await getScanDetail(scanId);
     if (!detail?.version) return NextResponse.json({ error: "Scan has no schema version" }, { status: 404 });
     const model = detail.version.model as unknown as SchemaModel;
+    if (model.engine === "redis" || body.targetEngine === "redis") return NextResponse.json({ error: "Redis key models describe a keyspace, not a schema — they cannot be a transformation source or target." }, { status: 400 });
     const target = parseEngine(body.targetEngine, model.engine === "mongodb" ? "postgres" : "mongodb");
     let plan: TransformPlan;
     try { plan = planTransform(model, target, body.options ?? {}); } catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
       let saved: { scanId: string } | null = null;
       if (body.save) {
         const label = String(body.label ?? `${model.engine} → ${target} design`).slice(0, 200);
-        const r = await persistScan({ projectId: access.project.id, engine: target, source: "transform", label, model: plan.targetModel, importWarnings: plan.warnings });
+        const r = await persistScan({ projectId: access.project.id, engine: target, source: "transform", label, model: plan.targetModel, importWarnings: plan.warnings, store: false });
         saved = { scanId: r.scanId };
         await audit(access.project.id, user.email, "transform.save_target", "scan", r.scanId, { from: model.engine, to: target });
       } else await audit(access.project.id, user.email, "transform.plan", "scan", scanId, { from: model.engine, to: target });

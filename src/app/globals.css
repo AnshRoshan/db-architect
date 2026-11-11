@@ -66,10 +66,30 @@ pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
 .card-hover { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease, border-color .25s ease; }
 .card-hover:hover { transform: translateY(-3px); box-shadow: 0 18px 40px -18px rgba(15, 23, 42, .25); border-color: rgba(99,102,241,.4); }
 .dark .card-hover:hover { box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .7); }
+.text-gradient-brand { background: linear-gradient(120deg, #4f46e5 0%, #7c3aed 50%, #0891b2 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.dark .text-gradient-brand { background-image: linear-gradient(120deg, #a5b4fc 0%, #c4b5fd 45%, #67e8f9 100%); }
+.grid-lines { background-image: linear-gradient(to right, rgba(148, 163, 184, .09) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, .09) 1px, transparent 1px); background-size: 44px 44px; }
+/* pointer-following highlight (see <Spotlight>) */
+.spotlight { position: relative; isolation: isolate; }
+.spotlight::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 0%), rgba(99, 102, 241, .16), transparent 62%); opacity: 0; transition: opacity .35s ease; pointer-events: none; }
+.spotlight:hover::before { opacity: 1; }
+/* a light that travels around the border */
+.gradient-border::after { content: ""; position: absolute; inset: 0; padding: 1px; border-radius: inherit; background: conic-gradient(from var(--angle), transparent 0 68%, #818cf8 82%, #67e8f9 92%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: border-spin 7s linear infinite; pointer-events: none; }
+.icon-tile { display: grid; place-items: center; border-radius: .85rem; background: linear-gradient(140deg, rgba(99, 102, 241, .16), rgba(139, 92, 246, .08)); color: #6366f1; box-shadow: inset 0 0 0 1px rgba(99, 102, 241, .22); transition: transform .3s cubic-bezier(.2,.8,.2,1), background .3s ease, color .3s ease; }
+.dark .icon-tile { color: #a5b4fc; }
+.group:hover .icon-tile { transform: translateY(-2px) rotate(-4deg) scale(1.06); background: linear-gradient(140deg, #6366f1, #8b5cf6); color: #fff; }
 
 }
 
+@property --angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes border-spin { to { --angle: 360deg; } }
+
 /* ── Keyframes ────────────────────────────────────────────────── */
+@keyframes pulse-ring { 0% { transform: scale(.85); opacity: .65; } 100% { transform: scale(2); opacity: 0; } }
+.pulse-ring { animation: pulse-ring 2.4s cubic-bezier(.2,.8,.2,1) infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes draw-line { from { stroke-dashoffset: var(--len, 400); } to { stroke-dashoffset: 0; } }
+.marquee-reverse { animation: marquee 40s linear infinite reverse; }
+.marquee-reverse:hover { animation-play-state: paused; }
 @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 .live-dot { animation: pulse-dot 1.6s infinite; }
 @keyframes float-y { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
