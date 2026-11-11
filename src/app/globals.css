@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: next-themes toggles `.dark` on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens ─────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+  --bg: #f6f8fb;
+  --bg-elevated: #ffffff;
+  --bg-muted: #f1f5f9;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --border: #e2e8f0;
+  --ring: #6366f1;
+  --surface-dark: #0b1120;
+  --grid-dot: #dbe3ee;
+  --scroll-thumb: #cbd5e1;
+}
+.dark {
+  color-scheme: dark;
+  --bg: #070b14;
+  --bg-elevated: #0f172a;
+  --bg-muted: #111a2e;
+  --fg: #e2e8f0;
+  --fg-muted: #94a3b8;
+  --border: #1e293b;
+  --ring: #818cf8;
+  --surface-dark: #05080f;
+  --grid-dot: #1e293b;
+  --scroll-thumb: #334155;
+}
+
+@theme inline {
+  --color-canvas: var(--bg);
+  --color-elevated: var(--bg-elevated);
+  --color-muted: var(--bg-muted);
+  --color-ink: var(--fg);
+  --color-ink-muted: var(--fg-muted);
+  --color-line: var(--border);
+}
+
+html { scroll-behavior: smooth; }
+html, body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+body { transition: background-color .35s ease, color .35s ease; }
+pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+::selection { background: rgba(99, 102, 241, .28); }
+
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 8px; }
+.diagram-canvas { cursor: grab; }
+.diagram-canvas:active { cursor: grabbing; }
+
+@layer components {
+/* ── Surfaces & utilities ─────────────────────────────────────── */
+.surface { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 1rem; }
+.surface-muted { background: var(--bg-muted); border: 1px solid var(--border); }
+.text-gradient { background: linear-gradient(120deg, #a5b4fc 0%, #c4b5fd 45%, #67e8f9 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.dot-grid { background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px); background-size: 22px 22px; }
+.glass { background: color-mix(in srgb, var(--bg-elevated) 72%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.glow-ring { box-shadow: 0 0 0 1px rgba(129, 140, 248, .25), 0 20px 60px -20px rgba(99, 102, 241, .45); }
+.card-hover { transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease, border-color .25s ease; }
+.card-hover:hover { transform: translateY(-3px); box-shadow: 0 18px 40px -18px rgba(15, 23, 42, .25); border-color: rgba(99,102,241,.4); }
+.dark .card-hover:hover { box-shadow: 0 18px 40px -16px rgba(0, 0, 0, .7); }
+
+}
+
+/* ── Keyframes ────────────────────────────────────────────────── */
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.live-dot { animation: pulse-dot 1.6s infinite; }
+@keyframes float-y { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.animate-float { animation: float-y 6s ease-in-out infinite; }
+.animate-float-slow { animation: float-y 9s ease-in-out infinite; }
+@keyframes aurora { 0% { transform: translate3d(-10%, -5%, 0) rotate(0deg) scale(1); } 50% { transform: translate3d(8%, 6%, 0) rotate(25deg) scale(1.15); } 100% { transform: translate3d(-10%, -5%, 0) rotate(0deg) scale(1); } }
+.aurora { animation: aurora 22s ease-in-out infinite; will-change: transform; }
+.aurora-2 { animation: aurora 30s ease-in-out infinite reverse; will-change: transform; }
+@keyframes dash-flow { to { stroke-dashoffset: -40; } }
+.edge-flow { stroke-dasharray: 8 6; animation: dash-flow 1.6s linear infinite; }
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.shimmer { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.35) 50%, transparent 100%); background-size: 800px 100%; animation: shimmer 2.4s linear infinite; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee { animation: marquee 32s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.spin-slow { animation: spin-slow 14s linear infinite; }
+@keyframes caret { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+.caret::after { content: "▍"; animation: caret 1s steps(1) infinite; color: #a5b4fc; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
+.rise-1 { animation-delay: .08s; } .rise-2 { animation-delay: .16s; } .rise-3 { animation-delay: .24s; } .rise-4 { animation-delay: .32s; }
+
+/* View transitions for theme flips */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .45s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
