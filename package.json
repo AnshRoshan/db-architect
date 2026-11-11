@@ -81,7 +81,7 @@
     "playwright": "^1.65.0",
     "postcss": "8.5.8",
     "tailwindcss": "4.1.17",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "vitest": "^5.1.0"
   }
 }
