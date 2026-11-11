@@ -14,6 +14,11 @@ import { parseMongoJson, parseSqlDdl } from "../src/lib/dsl";
 import { parseRedisDump } from "../src/lib/redis-model";
 import { FIXTURE_COMMERCE_MONGO_JSON, FIXTURE_MULTISCHEMA_SQL, FIXTURE_REDIS_JSON } from "../src/lib/fixtures-polyglot";
 
+// The landing showcase embeds the demo button, which navigates with the App Router.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }),
+}));
+
 const core = () => parseSqlDdl(FIXTURE_MULTISCHEMA_SQL, "commerce_core", "postgres").model;
 const cache = () => parseRedisDump(FIXTURE_REDIS_JSON, "commerce_cache").model;
 const report = () => analyzeArchitecture([

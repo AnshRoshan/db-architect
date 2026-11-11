@@ -34,6 +34,24 @@ The app runs without a database for most screens (there is a seeded demo
 workspace), but live connections, workspaces and authentication need
 PostgreSQL.
 
+### TypeScript 7 and the TypeScript 6 API side by side
+
+TypeScript 7 does not expose a programmatic API yet, and `typescript-eslint`
+still needs the TS 6 one. The repo therefore installs both, following
+Microsoft's [side-by-side guide](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0):
+
+```jsonc
+"devDependencies": {
+  "@typescript/native": "npm:typescript@^7.0.2",   // the `tsc` binary - TS 7
+  "typescript": "npm:@typescript/typescript6@^6.0.2" // the `typescript` module - TS 6 API
+}
+```
+
+So `bun run typecheck` and `next build` type-check with **TS 7**, while ESLint
+resolves `typescript` to the **TS 6** API that `typescript-eslint` supports.
+Do not "simplify" this back to a single `typescript` entry — `typescript-eslint`
+throws on TS 7 and linting stops working.
+
 ## Before you open a pull request
 
 ```bash

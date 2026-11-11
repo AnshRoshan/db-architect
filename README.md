@@ -9,7 +9,7 @@ Every schema. Every datastore. One architecture.
 [![CodeQL](https://github.com/AnshRoshan/db-architect/actions/workflows/codeql.yml/badge.svg)](https://github.com/AnshRoshan/db-architect/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-6366f1.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000.svg)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](https://www.typescriptlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org)
 [![Bun](https://img.shields.io/badge/bun-1.4-fbf0df.svg)](https://bun.sh)
 
 </div>
@@ -182,11 +182,11 @@ the top few are finished before the next one starts.
 |---|---|
 | Framework | Next.js 16 (App Router, Turbopack) |
 | UI | React 19, Tailwind CSS 4, `framer-motion`, `lucide-react`, `next-themes` |
-| Language | TypeScript 5.9 (`strict`) |
+| Language | TypeScript 7 (`strict`), with the TS 6 API alongside for typescript-eslint |
 | Data | PostgreSQL via Drizzle ORM; `pg`, `mysql2`, `mongodb`, `ioredis` clients |
 | Diagram layout | ELK (`elkjs`) |
 | Tests | Vitest + Testing Library (jsdom) + Playwright for E2E |
-| Tooling | ESLint 9 flat config, `drizzle-kit`, Bun |
+| Tooling | ESLint 10 flat config, `drizzle-kit`, Bun |
 
 ---
 
@@ -406,3 +406,4 @@ bun run check   # lint + typecheck + tests
 <div align="center">
   <sub>Deterministic rules first. Evidence over guesswork. Nothing is ever executed against your database.</sub>
 </div>
+
