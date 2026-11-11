@@ -10,8 +10,9 @@ import HeroScene from "@/components/hero-scene";
 import { EngineBadge, engineGlyph, engineTint } from "@/components/engine-icon";
 import { Magnetic, Typewriter } from "@/components/motion";
 import { ENGINE_LIST } from "@/lib/engines";
+import { REPO_URL } from "@/lib/project";
 
-const NAV = [["Features", "#features"], ["Architecture", "#architecture"], ["Transform", "#transform"], ["Advisor", "#advisor"], ["Security", "#security"], ["Roadmap", "#roadmap"]];
+const NAV = [["Features", "#features"], ["Architecture", "#architecture"], ["Transform", "#transform"], ["Advisor", "#advisor"], ["About", "#about"], ["Security", "#security"], ["Roadmap", "#roadmap"]];
 
 export function LandingNav() {
   const [open, setOpen] = useState(false);
@@ -28,6 +29,7 @@ export function LandingNav() {
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <span className="hidden sm:block"><ThemeToggle compact className="!border-white/15 !bg-white/5 !text-slate-300 hover:!text-white" /></span>
           <Link href="/app" className="hidden text-sm font-medium text-slate-300 transition hover:text-white sm:block">Sign in</Link>
+          <a href={REPO_URL} target="_blank" rel="noreferrer" aria-label="DB Architect on GitHub" className="hidden text-sm font-medium text-slate-300 transition hover:text-white sm:block">GitHub</a>
           <Magnetic><DemoButton className="flex items-center gap-2 whitespace-nowrap rounded-lg bg-indigo-500 px-3.5 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400 disabled:opacity-60">Try the demo</DemoButton></Magnetic>
           <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-slate-300 lg:hidden" aria-label="Menu" aria-expanded={open}>{open ? <X size={20} /> : <Menu size={20} />}</button>
         </div>

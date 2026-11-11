@@ -5,16 +5,11 @@
     "": {
       "name": "nextjs-postgresql-template",
       "dependencies": {
-        "@testing-library/dom": "^10.4.2",
-        "@testing-library/react": "^16.3.3",
-        "@types/js-yaml": "^4.0.9",
-        "dotenv": "17.3.1",
         "drizzle-orm": "0.45.2",
         "elkjs": "^0.9.3",
         "framer-motion": "^14.12.0",
         "ioredis": "^6.0.0",
         "js-yaml": "^5.5.0",
-        "jsdom": "^31.0.0",
         "lucide-react": "^1.71.0",
         "mongodb": "^7.8.0",
         "mysql2": "^3.24.6",
@@ -23,10 +18,12 @@
         "pg": "8.20.0",
         "react": "19.2.6",
         "react-dom": "19.2.6",
-        "vitest": "^5.1.0",
       },
       "devDependencies": {
         "@tailwindcss/postcss": "4.1.17",
+        "@testing-library/dom": "^10.4.2",
+        "@testing-library/react": "^16.3.3",
+        "@types/js-yaml": "^4.0.9",
         "@types/node": "22.19.15",
         "@types/pg": "8.18.0",
         "@types/react": "19.2.14",
@@ -34,9 +31,12 @@
         "drizzle-kit": "0.31.10",
         "eslint": "9.39.4",
         "eslint-config-next": "16.2.6",
+        "jsdom": "^31.0.0",
+        "playwright": "^1.65.0",
         "postcss": "8.5.8",
         "tailwindcss": "4.1.17",
         "typescript": "5.9.3",
+        "vitest": "^5.1.0",
       },
     },
   },
@@ -431,7 +431,7 @@
 
     "ansi-regex": ["ansi-regex@5.0.1", "", {}, ""],
 
-    "ansi-styles": ["ansi-styles@4.3.0", "", { "dependencies": { "color-convert": "^2.0.1" } }, ""],
+    "ansi-styles": ["ansi-styles@5.2.0", "", {}, ""],
 
     "argparse": ["argparse@3.0.4", "", {}, ""],
 
@@ -544,8 +544,6 @@
     "doctrine": ["doctrine@2.1.0", "", { "dependencies": { "esutils": "^2.0.2" } }, ""],
 
     "dom-accessibility-api": ["dom-accessibility-api@0.5.16", "", {}, ""],
-
-    "dotenv": ["dotenv@17.3.1", "", {}, ""],
 
     "drizzle-kit": ["drizzle-kit@0.31.10", "", { "dependencies": { "@drizzle-team/brocli": "^0.10.2", "@esbuild-kit/esm-loader": "^2.5.5", "esbuild": "^0.25.4", "tsx": "^4.21.0" }, "bin": "bin.cjs" }, ""],
 
@@ -953,6 +951,10 @@
 
     "picomatch": ["picomatch@4.0.7", "", {}, "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA=="],
 
+    "playwright": ["playwright@1.65.0", "", { "dependencies": { "playwright-core": "1.65.0" }, "bin": { "playwright": "cli.js" } }, "sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA=="],
+
+    "playwright-core": ["playwright-core@1.65.0", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA=="],
+
     "possible-typed-array-names": ["possible-typed-array-names@1.1.0", "", {}, ""],
 
     "postcss": ["postcss@8.5.8", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, ""],
@@ -1195,6 +1197,8 @@
 
     "@typescript-eslint/visitor-keys/eslint-visitor-keys": ["eslint-visitor-keys@5.0.1", "", {}, ""],
 
+    "chalk/ansi-styles": ["ansi-styles@4.3.0", "", { "dependencies": { "color-convert": "^2.0.1" } }, ""],
+
     "eslint-import-resolver-node/debug": ["debug@3.2.7", "", { "dependencies": { "ms": "^2.1.1" } }, ""],
 
     "eslint-module-utils/debug": ["debug@3.2.7", "", { "dependencies": { "ms": "^2.1.1" } }, ""],
@@ -1212,8 +1216,6 @@
     "mongodb-connection-string-url/whatwg-url": ["whatwg-url@14.2.0", "", { "dependencies": { "tr46": "^5.1.0", "webidl-conversions": "^7.0.0" } }, ""],
 
     "next/postcss": ["postcss@8.4.31", "", { "dependencies": { "nanoid": "^3.3.6", "picocolors": "^1.0.0", "source-map-js": "^1.0.2" } }, "sha512-PS08Iboia9mts/2ygV3eLpY5ghnUcfLV/EXTOW1E2qYxJKGGBUtNjN76FYHnMs36RmARn41bC0AZmn+rR0OVpQ=="],
-
-    "pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, ""],
 
     "prop-types/react-is": ["react-is@16.13.1", "", {}, ""],
 

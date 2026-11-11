@@ -57,8 +57,24 @@ src/lib/
   auth.ts, secrets.ts, bootstrap.ts   sessions, RBAC, AES-256-GCM, self-healing schema
 src/app/            "/" landing page · "/app" workspace · "/api/v1/*" REST
 src/components/     connect-panel, transform-studio, advisor-panel, roadmap-panel, diagram-studio, …
+src/components/views/  dashboard, architecture, explorer, analysis, assistant, reports, history
 tests/              vitest golden/unit suite
+e2e/                HTTP-level (architecture) and browser-level (auth) end-to-end scripts
 ```
+
+### Repository layout and governance
+
+| Path | Purpose |
+|---|---|
+| `README.md` | Product overview, quick start, engine matrix, API surface |
+| `docs/SPEC.md` | This document — product definition, architecture, rules, known gaps |
+| `CONTRIBUTING.md` | Principles a change must not break; how to add an engine; rule-id contract |
+| `SECURITY.md` | Threat model, private reporting, known limitations |
+| `CODE_OF_CONDUCT.md` | Contributor Covenant 2.1 |
+| `SUPPORT.md` | Where to ask, debugging checklist |
+| `.github/workflows/` | CI (lint, typecheck, test, build), CodeQL, release on tag |
+| `.github/ISSUE_TEMPLATE/` | Structured bug and feature templates |
+| `.github/dependabot.yml` | Grouped dependency updates for npm and GitHub Actions |
 
 ### Adapter interface
 
@@ -134,9 +150,14 @@ Engines scored: PostgreSQL, MySQL, SQLite, SQL Server, MongoDB, Redis, DynamoDB,
 
 ## 8. Testing
 
-`npx vitest run` — 44 tests (32 engine + 8 UI/DOM incl. session transport): dialect detection, MySQL/SQLite/PG parsing (incl. regression for dropped DEFAULTs),
+`bun run test` (`vitest run`) — 74 tests across 6 files: dialect detection, MySQL/SQLite/PG parsing (incl. regression for dropped DEFAULTs),
 analysis relabelling, every transform direction, ETL scripts `node --check`ed for 8 engine pairs, advisor
-rankings, migrations (transaction safety, MySQL non-transactional DDL).
+rankings, migrations (transaction safety, MySQL non-transactional DDL), the multi-store architecture model
+(stores, roles, flows, cross-store links), the Redis key model, the grounded assistant, and UI/DOM behaviour
+(incl. session transport).
+
+End-to-end scripts live in `e2e/` and need a running app: `bun run e2e` (HTTP-level, multi-schema +
+multi-datastore) and `bun run e2e:auth` (browser-level auth flow via Playwright).
 
 Not yet covered: live MySQL/Mongo integration tests (need service containers), UI end-to-end, load tests.
 

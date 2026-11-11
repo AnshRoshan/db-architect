@@ -1,0 +1,91 @@
+name: Bug report
+description: Something in DB Architect does not behave as documented
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Deterministic rule output,
+        parser behaviour and migration generation are the areas where a
+        reproducible report is most valuable.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe, and what did you expect instead?
+      placeholder: The generated migration dropped a NOT NULL constraint that the source schema had.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal input and the exact steps.
+      placeholder: |
+        1. Import the attached DDL dump
+        2. Open Transform
+        3. Select PostgreSQL -> MySQL
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: The DDL, JSON, key dump or connection configuration that triggers it. Remove credentials - the app never needs them in a report.
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Server output, browser console errors or the rule id that fired.
+      render: shell
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Schema import / parsing
+        - Live introspection
+        - Diagram
+        - Analysis rules
+        - Diff & Migrate
+        - Transformation Studio
+        - Database Advisor
+        - Architecture view
+        - Authentication & workspaces
+        - Reports
+        - AI Assistant
+        - Landing page / UI
+        - Documentation
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: engine
+    attributes:
+      label: Engine involved
+      placeholder: PostgreSQL, MySQL, SQLite, MongoDB, Redis
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The commit SHA, release tag, or local build you are running.
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues and this has not been reported.
+          required: true
+        - label: I removed credentials and other sensitive data from the report.
+          required: true

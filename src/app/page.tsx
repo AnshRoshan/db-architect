@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowRightLeft, BadgeCheck, Boxes, Cable, Check, Compass, Database, EyeOff, FileDiff, FileText, FolderTree, Gauge, GitBranch, KeyRound, Layers, LockKeyhole, Network, Rocket, ScanSearch, ShieldCheck, TableProperties, Timer, Workflow, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, BadgeCheck, Boxes, Cable, Check, Compass, Database, EyeOff, ExternalLink, FileDiff, FileText, FolderTree, Gauge, GitBranch, KeyRound, Layers, ListChecks, LockKeyhole, Network, Rocket, ScanSearch, ShieldCheck, TableProperties, Timer, Workflow, type LucideIcon } from "lucide-react";
 import DemoButton from "@/components/demo-button";
 import { EngineBadge } from "@/components/engine-icon";
 import { AdvisorBars, ArchitectureShowcase, EngineMarquee, Hero, LandingNav, TransformShowcase, type ShowcaseData } from "@/components/landing-sections";
@@ -13,6 +13,7 @@ import { parseMongoJson, parseSqlDdl } from "@/lib/dsl";
 import { ENGINE_LIST } from "@/lib/engines";
 import { FIXTURE_COMMERCE_MONGO_JSON, FIXTURE_MULTISCHEMA_SQL, FIXTURE_REDIS_JSON } from "@/lib/fixtures-polyglot";
 import { parseRedisDump } from "@/lib/redis-model";
+import { REPO_URL } from "@/lib/project";
 import { SPEC_ITEMS, TOP_10 } from "@/lib/roadmap";
 
 export const metadata: Metadata = {
@@ -80,6 +81,14 @@ const SECURITY: [LucideIcon, string, string][] = [
   [KeyRound, "Encrypted credentials", "AES-256-GCM at rest; no API ever returns a secret. Rotate and revoke any time."],
   [ShieldCheck, "SSRF & tenant isolation", "Metadata and private ranges are blocked unless allowlisted; every request is workspace-scoped."],
   [EyeOff, "Metadata first", "We store schemas, shapes and key patterns — not your rows or values. Live previews are masked and never persisted."],
+];
+const PRINCIPLES: [LucideIcon, string, string][] = [
+  [ShieldCheck, "Deterministic rules first", "Findings are derived from the schema, statistics, workload, samples or a named heuristic. The assistant explains a finding — it never invents one."],
+  [ListChecks, "Evidence on every claim", "Each finding carries an evidence level, a confidence score and its limitations. A heuristic is never presented as a measured fact."],
+  [LockKeyhole, "Read-only by default", "Nothing is executed against your database. Migrations and ETL scripts are generated for you to review and run yourself."],
+  [EyeOff, "Metadata first", "Schemas, shapes and key patterns are stored — rows are not. Live previews are masked, bounded and never persisted."],
+  [Network, "Engine-neutral core", "One canonical model, with engine specifics isolated in adapters, dialect generators and rule sets."],
+  [FolderTree, "Finish the top few first", "Engines are added in order of real-world usage, and each is complete before the next one starts."],
 ];
 const STATUS_STYLE: Record<string, string> = { shipped: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300", next: "bg-amber-500/15 text-amber-600 dark:text-amber-300", planned: "bg-slate-500/15 text-ink-muted", in_progress: "bg-sky-500/15 text-sky-600 dark:text-sky-300" };
 
@@ -210,6 +219,58 @@ export default function Home() {
         </RevealGroup>
       </section>
 
+      {/* about */}
+      <section id="about" className="scroll-mt-16 border-b border-line bg-elevated/60 py-24">
+        <div className="mx-auto max-w-7xl px-5">
+          <Reveal className="max-w-3xl">
+            <Eyebrow>About</Eyebrow>
+            <h2 className="mt-4 text-4xl font-semibold tracking-tight sm:text-[2.6rem]">
+              <WordReveal text="Built to be argued with." />
+            </h2>
+            <p className="mt-4 text-lg leading-8 text-ink-muted">
+              Every number DB Architect shows can be traced back to a rule, a
+              statistic, a sample or a named heuristic. That is what makes it
+              useful in a design review — you can disagree with a finding, and
+              the tool will tell you why it believes it.
+            </p>
+          </Reveal>
+          <RevealGroup className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3" delay={.06}>
+            {PRINCIPLES.map(([Icon, t, d]) => (
+              <RevealItem key={t}>
+                <Spotlight className="surface card-hover group flex h-full flex-col p-6">
+                  <div className="icon-tile h-11 w-11"><Icon size={20} /></div>
+                  <h3 className="mt-5 text-base font-semibold text-ink">{t}</h3>
+                  <p className="mt-2 text-sm leading-6 text-ink-muted">{d}</p>
+                </Spotlight>
+              </RevealItem>
+            ))}
+          </RevealGroup>
+          <Reveal className="mt-12" delay={.1}>
+            <div className="surface flex flex-col items-start gap-6 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-ink">Open source, end to end</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">
+                  The full product is on GitHub: every engine adapter, every
+                  rule, the transformation planner and the migration generator.
+                  Read the code, run it locally, or add the engine your stack is
+                  missing.
+                </p>
+              </div>
+              <a
+                href={REPO_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex shrink-0 items-center gap-2 rounded-xl bg-ink px-5 py-3 text-sm font-bold text-canvas transition hover:opacity-90"
+              >
+                <ExternalLink size={16} />
+                View on GitHub
+                <ArrowRight size={15} className="transition group-hover:translate-x-1" />
+              </a>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* security */}
       <section id="security" className="scroll-mt-16 border-y border-line bg-elevated/60 py-24">
         <div className="mx-auto max-w-7xl px-5">
@@ -239,7 +300,7 @@ export default function Home() {
       <footer className="border-t border-white/5 bg-[#070b14] px-5 py-12 text-slate-400">
         <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div><div className="flex items-center gap-2.5 text-white"><span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600"><Database size={17} /></span><span className="font-bold tracking-tight">DB Architect</span></div><p className="mt-3 max-w-xs text-sm leading-6">Database-agnostic architecture intelligence. Deterministic rules first, evidence over guesswork.</p><div className="mt-4 flex gap-2">{ENGINE_LIST.map((e) => <span key={e.id} title={e.label}><EngineBadge engine={e.id} size={28} /></span>)}</div></div>
-          {([["Product", [["Features", "#features"], ["Architecture", "#architecture"], ["Transformation Studio", "#transform"], ["Database Advisor", "#advisor"]]], ["Trust", [["Security model", "#security"], ["Roadmap", "#roadmap"], ["Engines", "#engines"]]], ["Get started", [["Open the workspace", "/app"], ["Sign in", "/app"]]]] as [string, [string, string][]][]).map(([title, links]) => <div key={title}><div className="text-xs font-bold uppercase tracking-[.16em] text-slate-500">{title}</div><ul className="mt-3 space-y-2 text-sm">{links.map(([l, h]) => <li key={l}>{h.startsWith("/") ? <Link href={h} className="transition hover:text-white">{l}</Link> : <a href={h} className="transition hover:text-white">{l}</a>}</li>)}</ul></div>)}
+          {([["Product", [["Features", "#features"], ["Architecture", "#architecture"], ["Transformation Studio", "#transform"], ["Database Advisor", "#advisor"]]], ["Trust", [["About", "#about"], ["Security model", "#security"], ["Roadmap", "#roadmap"], ["Engines", "#engines"]]], ["Get started", [["Open the workspace", "/app"], ["Sign in", "/app"], ["GitHub", REPO_URL]]]] as [string, [string, string][]][]).map(([title, links]) => <div key={title}><div className="text-xs font-bold uppercase tracking-[.16em] text-slate-500">{title}</div><ul className="mt-3 space-y-2 text-sm">{links.map(([l, h]) => <li key={l}>{h.startsWith("/") ? <Link href={h} className="transition hover:text-white">{l}</Link> : h.startsWith("http") ? <a href={h} target="_blank" rel="noreferrer" className="transition hover:text-white">{l}</a> : <a href={h} className="transition hover:text-white">{l}</a>}</li>)}</ul></div>)}
         </div>
         <div className="mx-auto mt-10 flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/5 pt-6 text-xs text-slate-500"><span className="flex items-center gap-1.5"><Boxes size={13} />Every schema · every database · one architecture</span><span className="flex items-center gap-1.5"><TableProperties size={13} />Nothing is ever executed against your database</span></div>
       </footer>

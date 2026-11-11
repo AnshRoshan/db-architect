@@ -1,0 +1,67 @@
+name: Feature request
+description: Suggest a capability or an engine
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        DB Architect adds databases in order of real-world usage and finishes the
+        top few before starting the next. Requests that fit the current
+        architecture are the easiest to land.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that is hard today? Describe the situation, not the solution.
+      placeholder: I cannot tell whether a foreign key in another schema is enforced, because the diagram draws it the same as an inferred relationship.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should the product do differently?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New database engine
+        - Schema import / parsing
+        - Live introspection
+        - Architecture & cross-store analysis
+        - Diagram
+        - Analysis rules
+        - Diff & Migrate
+        - Transformation Studio
+        - Database Advisor
+        - Reports
+        - AI Assistant
+        - Workspaces, auth & RBAC
+        - Infrastructure / deployment
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you have used, or features that solve a similar problem.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues and discussions for this.
+          required: true
+        - label: This is about the product, not a bug in the current behaviour.
+          required: true
