@@ -290,6 +290,25 @@ export const diagramLayouts = pgTable(
   (t) => [index("layouts_scan_idx").on(t.scanId)]
 );
 
+export const redesignBlueprints = pgTable(
+  "redesign_blueprints",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 200 }).notNull(),
+    kind: varchar("kind", { length: 30 }).notNull().default("redesign"), // redesign | ai_proposal
+    goal: varchar("goal", { length: 60 }).notNull().default("optimize_current"),
+    requirements: jsonb("requirements").notNull().default({}),
+    blueprint: jsonb("blueprint").notNull().default({}),
+    targetScanId: uuid("target_scan_id").references(() => schemaScans.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("blueprints_project_idx").on(t.projectId)]
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

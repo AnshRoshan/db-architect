@@ -199,6 +199,19 @@ CREATE TABLE IF NOT EXISTS data_flows (
 CREATE INDEX IF NOT EXISTS data_flows_project_idx ON data_flows (project_id);
 ALTER TABLE schema_scans ADD COLUMN IF NOT EXISTS data_store_id uuid REFERENCES data_stores(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS scans_store_idx ON schema_scans (data_store_id);
+CREATE TABLE IF NOT EXISTS redesign_blueprints (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name varchar(200) NOT NULL,
+  kind varchar(30) NOT NULL DEFAULT 'redesign',
+  goal varchar(60) NOT NULL DEFAULT 'optimize_current',
+  requirements jsonb NOT NULL DEFAULT '{}'::jsonb,
+  blueprint jsonb NOT NULL DEFAULT '{}'::jsonb,
+  target_scan_id uuid REFERENCES schema_scans(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS blueprints_project_idx ON redesign_blueprints (project_id);
 `;
 
 export function ensureSchema(): Promise<void> {
