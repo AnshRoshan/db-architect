@@ -310,8 +310,18 @@ export function parseSqlDdl(sql: string, database = "imported_db", dialectHint?:
       parseCreateIndex(stmt, model, warnings);
     } else if (upper.startsWith("ALTER TABLE")) {
       parseAlterTable(stmt, model, warnings);
-    } else if (upper.startsWith("CREATE VIEW") || upper.startsWith("CREATE MATERIALIZED VIEW") || upper.startsWith("CREATE OR REPLACE VIEW")) {
-      warnings.push(`View preserved as metadata only: ${stmt.slice(0, 80)}`);
+    } else if (/^CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:MATERIALIZED\s+)?VIEW\b/i.test(upper)) {
+      parseCreateView(stmt, model, warnings);
+    } else if (/^CREATE\s+TYPE\b/i.test(upper) && /\bAS\s+ENUM\b/i.test(upper)) {
+      parseCreateEnum(stmt, model);
+    } else if (/^CREATE\s+EXTENSION\b/i.test(upper)) {
+      const em = stmt.match(/^CREATE\s+EXTENSION\s+(?:IF NOT EXISTS\s+)?"?([A-Za-z0-9_-]+)"?/i);
+      if (em) {
+        model.catalog = model.catalog ?? { namespaces: [] };
+        model.catalog.extensions = [...new Set([...(model.catalog.extensions ?? []), em[1]])];
+      }
+    } else if (/^COMMENT\s+ON\b/i.test(upper)) {
+      parseCommentOn(stmt, model);
     } else if (/^CREATE SCHEMA/.test(upper)) {
       const sm = stmt.match(/^CREATE SCHEMA\s+(?:IF NOT EXISTS\s+)?"?([A-Za-z0-9_]+)"?/i);
       if (sm && !model.namespaces.includes(sm[1])) model.namespaces.push(sm[1]);
@@ -331,6 +341,15 @@ export function parseSqlDdl(sql: string, database = "imported_db", dialectHint?:
   deriveExplicitRelationships(model);
   if (dialect === "postgres" && !model.namespaces.includes("public")) model.namespaces.unshift("public");
   if (!model.namespaces.length) model.namespaces = [ns];
+  model.catalog = {
+    ...(model.catalog ?? {}),
+    namespaces: model.namespaces.map((name) => ({
+      name,
+      comment: model.catalog?.namespaces.find((x) => x.name === name)?.comment ?? null,
+      tables: model.entities.filter((e) => e.namespace === name && (e.kind === "table" || e.kind === "foreign_table")).length,
+      views: model.entities.filter((e) => e.namespace === name && (e.kind === "view" || e.kind === "materialized_view")).length,
+    })),
+  };
   model.warnings = warnings;
   return { model, warnings, detectedEngine: dialect };
 }
@@ -355,10 +374,18 @@ function retargetNamespace(model: SchemaModel, from: string, to: string, engine:
 }
 
 function splitTableOptions(stmt: string): { clean: string; options: Record<string, unknown> } {
-  const m = stmt.match(/\)\s*((?:(?:ENGINE|AUTO_INCREMENT|DEFAULT CHARSET|DEFAULT CHARACTER SET|CHARSET|CHARACTER SET|DEFAULT COLLATE|COLLATE|COMMENT|ROW_FORMAT|WITHOUT ROWID|STRICT)\b\s*=?\s*(?:'[^']*'|[\w.]+)?\s*,?\s*)+)$/i);
-  if (!m) return { clean: stmt, options: {} };
-  const opt = m[1];
+  let clean = stmt;
   const options: Record<string, unknown> = {};
+  // PostgreSQL declarative partitioning: CREATE TABLE ... (...) PARTITION BY RANGE (created_at)
+  const partM = clean.match(/\)\s+(PARTITION\s+BY\s+(?:RANGE|LIST|HASH)\s*\([^)]+\))\s*$/i);
+  if (partM) {
+    options.partitioned = true;
+    options.partitionBy = partM[1].trim();
+    clean = clean.slice(0, clean.length - partM[1].length).trimEnd();
+  }
+  const m = clean.match(/\)\s*((?:(?:ENGINE|AUTO_INCREMENT|DEFAULT CHARSET|DEFAULT CHARACTER SET|CHARSET|CHARACTER SET|DEFAULT COLLATE|COLLATE|COMMENT|ROW_FORMAT|WITHOUT ROWID|STRICT)\b\s*=?\s*(?:'[^']*'|[\w.]+)?\s*,?\s*)+)$/i);
+  if (!m) return { clean, options };
+  const opt = m[1];
   const eng = opt.match(/ENGINE\s*=?\s*(\w+)/i);
   if (eng) options.storageEngine = eng[1];
   const cs = opt.match(/(?:CHARSET|CHARACTER SET)\s*=?\s*(\w+)/i);
@@ -366,7 +393,85 @@ function splitTableOptions(stmt: string): { clean: string; options: Record<strin
   const co = opt.match(/COLLATE\s*=?\s*(\w+)/i);
   if (co) options.collation = co[1];
   if (/WITHOUT ROWID/i.test(opt)) options.withoutRowid = true;
-  return { clean: stmt.slice(0, stmt.length - opt.length), options };
+  if (/\bSTRICT\b/i.test(opt)) options.strict = true;
+  return { clean: clean.slice(0, clean.length - opt.length), options };
+}
+
+function parseCreateView(stmt: string, model: SchemaModel, warnings: string[]) {
+  const m = stmt.match(/^CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP(?:ORARY)?\s+)?(MATERIALIZED\s+)?VIEW\s+(?:IF NOT EXISTS\s+)?([a-zA-Z0-9_."]+)\s*(?:\(([^)]+)\))?\s+AS\s+([\s\S]+)$/i);
+  if (!m) {
+    warnings.push(`View preserved as metadata only: ${stmt.slice(0, 80)}`);
+    return;
+  }
+  const kind = m[1] ? ("materialized_view" as const) : ("view" as const);
+  const fullName = m[2].replace(/"/g, "");
+  const { namespace, short } = splitName(fullName.includes(".") ? fullName : `public.${fullName}`, "postgres");
+  if (!model.namespaces.includes(namespace)) model.namespaces.push(namespace);
+  const eid = entityId("postgres", namespace, short);
+  const explicitCols = m[3] ? m[3].split(",").map((c) => c.replace(/"/g, "").trim()).filter(Boolean) : [];
+  const selectCols: string[] = [];
+  if (!explicitCols.length) {
+    const sel = m[4].match(/^SELECT\s+(?:DISTINCT\s+)?([\s\S]+?)\s+FROM\b/i);
+    if (sel && sel[1].trim() !== "*") {
+      for (const expr of splitTopLevel(sel[1])) {
+        const asM = expr.trim().match(/\bAS\s+"?([A-Za-z_][A-Za-z0-9_]*)"?\s*$/i);
+        const tailM = expr.trim().match(/([A-Za-z_][A-Za-z0-9_]*)"?\s*$/);
+        const col = asM?.[1] ?? tailM?.[1];
+        if (col && !/^(count|sum|avg|min|max|distinct|case|end)$/i.test(col)) selectCols.push(col);
+      }
+    }
+  }
+  const cols = explicitCols.length ? explicitCols : selectCols;
+  model.entities.push({
+    id: eid,
+    name: `${namespace}.${short}`,
+    shortName: short,
+    namespace,
+    kind,
+    engine: "postgres",
+    fields: cols.map((c) => ({ id: fieldId(eid, c), name: c, type: "unknown", nullable: true })),
+    indexes: [],
+    constraints: [],
+    metadata: { definition: m[4].trim().slice(0, 2000) },
+  });
+}
+
+function parseCreateEnum(stmt: string, model: SchemaModel) {
+  const m = stmt.match(/^CREATE\s+TYPE\s+([a-zA-Z0-9_."]+)\s+AS\s+ENUM\s*\(([\s\S]+)\)\s*$/i);
+  if (!m) return;
+  const full = m[1].replace(/"/g, "");
+  const { namespace, short } = splitName(full.includes(".") ? full : `public.${full}`, "postgres");
+  if (!model.namespaces.includes(namespace)) model.namespaces.push(namespace);
+  const values = [...m[2].matchAll(/'((?:[^']|'')*)'/g)].map((x) => x[1].replace(/''/g, "'"));
+  model.catalog = model.catalog ?? { namespaces: [] };
+  model.catalog.enums = [...(model.catalog.enums ?? []), { namespace, name: short, values }];
+}
+
+function parseCommentOn(stmt: string, model: SchemaModel) {
+  const m = stmt.match(/^COMMENT\s+ON\s+(TABLE|COLUMN|SCHEMA)\s+([a-zA-Z0-9_."]+)\s+IS\s+'((?:[^']|'')*)'\s*$/i);
+  if (!m) return;
+  const targetKind = m[1].toUpperCase();
+  const target = m[2].replace(/"/g, "");
+  const text = m[3].replace(/''/g, "'");
+  if (targetKind === "SCHEMA") {
+    model.catalog = model.catalog ?? { namespaces: [] };
+    const existing = model.catalog.namespaces.find((n) => n.name === target);
+    if (existing) existing.comment = text;
+    else model.catalog.namespaces.push({ name: target, comment: text, tables: 0, views: 0 });
+  } else if (targetKind === "TABLE") {
+    const full = target.includes(".") ? target : `public.${target}`;
+    const ent = model.entities.find((e) => e.name === full);
+    if (ent) ent.comment = text;
+  } else if (targetKind === "COLUMN") {
+    const parts = target.split(".");
+    if (parts.length >= 2) {
+      const col = parts.pop()!;
+      const tname = parts.length === 1 ? `public.${parts[0]}` : parts.join(".");
+      const ent = model.entities.find((e) => e.name === tname);
+      const field = ent?.fields.find((f) => f.name === col);
+      if (field) field.comment = text;
+    }
+  }
 }
 
 function parseCreateTable(stmt: string, model: SchemaModel, warnings: string[]) {
@@ -447,9 +552,30 @@ function parseColumnDef(def: string, entity: EntityModel, warnings: string[]) {
       columns: [name],
     });
   }
-  const fkM = rest.match(/REFERENCES\s+([a-zA-Z0-9_."]+)\s*(?:\(\s*"?([a-zA-Z0-9_]+)"?\s*\))?/i);
+  if (/\bUNIQUE\b/.test(up) && !/\bPRIMARY KEY\b/.test(up)) {
+    entity.constraints.push({
+      id: constraintId(entity.id, `uq_${entity.shortName}_${name}`),
+      name: `${entity.shortName}_${name}_key`,
+      kind: "unique",
+      columns: [name],
+    });
+  }
+  const chkM = rest.match(/\bCHECK\s*\(([\s\S]+?)\)(?:\s*(?:NOT NULL|NULL|DEFAULT|UNIQUE|PRIMARY|REFERENCES|$))/i);
+  if (chkM) {
+    entity.constraints.push({
+      id: constraintId(entity.id, `chk_${entity.shortName}_${name}`),
+      name: `${entity.shortName}_${name}_check`,
+      kind: "check",
+      columns: [name],
+      definition: chkM[1].trim(),
+    });
+  }
+  const fkM = rest.match(/REFERENCES\s+([a-zA-Z0-9_."]+)\s*(?:\(\s*"?([a-zA-Z0-9_]+)"?\s*\))?([\s\S]*)/i);
   if (fkM) {
     const ref = fkM[1].replace(/"/g, "");
+    const tail = (fkM[3] ?? "").toUpperCase();
+    const onDelete = tail.match(/ON DELETE\s+(CASCADE|SET NULL|SET DEFAULT|RESTRICT|NO ACTION)/)?.[1] ?? null;
+    const onUpdate = tail.match(/ON UPDATE\s+(CASCADE|SET NULL|SET DEFAULT|RESTRICT|NO ACTION)/)?.[1] ?? null;
     entity.constraints.push({
       id: constraintId(entity.id, `fk_${entity.shortName}_${name}`),
       name: `fk_${entity.shortName}_${name}`,
@@ -457,6 +583,8 @@ function parseColumnDef(def: string, entity: EntityModel, warnings: string[]) {
       columns: [name],
       referencedEntity: ref.includes(".") ? ref : `public.${ref}`,
       referencedColumns: fkM[2] ? [fkM[2]] : ["id"],
+      onDelete,
+      onUpdate,
     });
   }
 }
@@ -499,6 +627,7 @@ function parseTableConstraint(def: string, entity: EntityModel, warnings: string
     const refCols = m[3] ? m[3].split(",").map((s) => s.replace(/"/g, "").trim()) : ["id"];
     const tail = (m[4] ?? "").toUpperCase();
     const onDelete = tail.match(/ON DELETE\s+(CASCADE|SET NULL|SET DEFAULT|RESTRICT|NO ACTION)/)?.[1] ?? null;
+    const onUpdate = tail.match(/ON UPDATE\s+(CASCADE|SET NULL|SET DEFAULT|RESTRICT|NO ACTION)/)?.[1] ?? null;
     entity.constraints.push({
       id: constraintId(entity.id, `fk_${entity.shortName}_${cols.join("_")}`),
       name: `fk_${entity.shortName}_${cols.join("_")}`,
@@ -507,6 +636,7 @@ function parseTableConstraint(def: string, entity: EntityModel, warnings: string
       referencedEntity: ref.includes(".") ? ref : `public.${ref}`,
       referencedColumns: refCols,
       onDelete,
+      onUpdate,
     });
     return;
   }
@@ -533,20 +663,51 @@ function parseTableConstraint(def: string, entity: EntityModel, warnings: string
   warnings.push(`Unsupported table constraint preserved as warning: ${def.slice(0, 80)}`);
 }
 
+function extractParenGroup(str: string, openIdx: number): { content: string; end: number } | null {
+  if (str[openIdx] !== "(") return null;
+  let depth = 0;
+  let inStr = false;
+  for (let i = openIdx; i < str.length; i++) {
+    const ch = str[i];
+    if (ch === "'" && str[i - 1] !== "\\") inStr = !inStr;
+    if (!inStr) {
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) return { content: str.slice(openIdx + 1, i), end: i };
+      }
+    }
+  }
+  return null;
+}
+
 function parseCreateIndex(stmt: string, model: SchemaModel, warnings: string[]) {
-  const m = stmt.match(
-    /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF NOT EXISTS\s+)?(?:CONCURRENTLY\s+)?"?([a-zA-Z0-9_]+)"?\s+ON\s+([a-zA-Z0-9_."]+)\s*(?:USING\s+([a-zA-Z0-9_]+))?\s*\(([^)]+)\)\s*(WHERE\s+.+)?/i
+  // Handle both `CONCURRENTLY IF NOT EXISTS` (valid PG order) and `IF NOT EXISTS CONCURRENTLY`
+  const head = stmt.match(
+    /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:(?:CONCURRENTLY|IF\s+NOT\s+EXISTS)\s+)*"?([a-zA-Z0-9_]+)"?\s+ON\s+(?:ONLY\s+)?([a-zA-Z0-9_."]+)\s*(?:USING\s+([a-zA-Z0-9_]+))?\s*\(/i
   );
-  if (!m) {
+  if (!head) {
     warnings.push("Could not parse CREATE INDEX statement");
     return;
   }
-  const unique = Boolean(m[1]);
-  const iname = m[2];
-  const table = m[3].replace(/"/g, "");
-  const method = (m[4] ?? "btree").toLowerCase();
-  const cols = m[5].split(",").map((s) => s.replace(/"/g, "").trim().split(/\s+/)[0]);
-  const predicate = m[6]?.trim() ?? null;
+  const openIdx = head.index! + head[0].length - 1;
+  const group = extractParenGroup(stmt, openIdx);
+  if (!group) {
+    warnings.push("Could not parse CREATE INDEX column list");
+    return;
+  }
+  const unique = Boolean(head[1]);
+  const iname = head[2];
+  const table = head[3].replace(/"/g, "");
+  const method = (head[4] ?? "btree").toLowerCase();
+  const tail = stmt.slice(group.end + 1).trim();
+  const rawCols = splitTopLevel(group.content).map((s) => s.trim()).filter(Boolean);
+  const expression = rawCols.some((c) => /[()]/.test(c));
+  const cols = rawCols.map((c) => (/[()]/.test(c) ? c : c.replace(/"/g, "").split(/\s+/)[0]));
+  let includeColumns: string[] | undefined;
+  const incM = tail.match(/\bINCLUDE\s*\(([^)]+)\)/i);
+  if (incM) includeColumns = incM[1].split(",").map((s) => s.replace(/"/g, "").trim()).filter(Boolean);
+  const predicate = tail.match(/\bWHERE\s+([\s\S]+)$/i)?.[0]?.trim() ?? null;
   const full = table.includes(".") ? table : `public.${table}`;
   let ent = model.entities.find((e) => e.name === full);
   if (!ent) {
@@ -570,11 +731,12 @@ function parseCreateIndex(stmt: string, model: SchemaModel, warnings: string[]) 
     id: indexId(ent.id, iname),
     name: iname,
     columns: cols,
+    includeColumns,
     method,
     unique,
     partial: Boolean(predicate),
     predicate,
-    expression: /\(.*\(/.test(m[5]) || /lower\(|upper\(|coalesce\(/i.test(m[5]),
+    expression,
     definition: stmt,
   });
 }
@@ -602,22 +764,11 @@ function parseAlterTable(stmt: string, model: SchemaModel, warnings: string[]) {
     if ((am = action.match(/^ADD\s+((?:CONSTRAINT|PRIMARY KEY|FOREIGN KEY|UNIQUE|CHECK|EXCLUDE|KEY|INDEX|FULLTEXT|SPATIAL)\b[\s\S]*)/i))) {
       parseTableConstraint(am[1], ent, warnings);
     } else if ((am = action.match(/^ADD\s+(?:COLUMN\s+)?(?:IF NOT EXISTS\s+)?"?([a-zA-Z0-9_]+)"?\s+(.*)/i))) {
-      entityPushColumn(ent, am[1], am[2]);
+      parseColumnDef(`"${am[1]}" ${am[2]}`, ent, warnings);
     } else {
       warnings.push(`ALTER TABLE action preserved as warning: ${action.slice(0, 80)}`);
     }
   }
-}
-
-function entityPushColumn(ent: EntityModel, name: string, rest: string) {
-  const up = rest.toUpperCase();
-  ent.fields.push({
-    id: fieldId(ent.id, name),
-    name,
-    type: rest.split(/\s+/)[0].toLowerCase(),
-    nullable: !/\bNOT NULL\b/.test(up),
-    defaultValue: rest.match(/DEFAULT\s+('(?:[^']|'')*'|\((?:[^()]|\([^()]*\))*\)|[^\s,()]+(?:\([^)]*\))?)/i)?.[1]?.trim() ?? null,
-  });
 }
 
 function splitTopLevel(body: string): string[] {
@@ -847,9 +998,13 @@ export function validateModel(model: SchemaModel): { errors: string[]; warnings:
   const errors: string[] = [];
   const warnings: string[] = [];
   const entityNames = new Set<string>();
+  // Pass 1: collect all entity names so forward-referenced foreign keys don't produce false warnings.
   for (const e of model.entities) {
     if (entityNames.has(e.name)) errors.push(`Duplicate entity: ${e.name}`);
     entityNames.add(e.name);
+  }
+  // Pass 2: validate fields, indexes and foreign-key targets against the complete entity set.
+  for (const e of model.entities) {
     if (e.fields.length === 0) warnings.push(`${e.name}: no fields defined`);
     const fnames = new Set<string>();
     for (const f of e.fields) {
@@ -864,8 +1019,7 @@ export function validateModel(model: SchemaModel): { errors: string[]; warnings:
     }
     for (const c of e.constraints) {
       if (c.kind === "foreign_key" && c.referencedEntity && !entityNames.has(c.referencedEntity)) {
-        // check later after all entities known — downgrade to warning (target may be outside selection)
-        warnings.push(`${e.name}: FK ${c.name} references unknown entity ${c.referencedEntity}`);
+        warnings.push(`${e.name}: FK ${c.name} references entity outside this model (${c.referencedEntity})`);
       }
     }
   }

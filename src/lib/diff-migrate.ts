@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
-import { SchemaModel, EntityModel } from "./schema-model";
-import { generateSqlMigration, createIndexes } from "./sql-dialects";
+import { SchemaModel, EntityModel, IndexModel, ConstraintModel } from "./schema-model";
+import { generateSqlMigration, createIndexes, createTable, qcol } from "./sql-dialects";
 
 export interface DiffChange {
   kind:
@@ -87,18 +87,38 @@ export function diffModels(source: SchemaModel, target: SchemaModel): SchemaDiff
     // fields
     const sf = new Map(s.fields.map((f) => [f.name, f]));
     const tf = new Map(t.fields.map((f) => [f.name, f]));
-    for (const f of s.fields) {
-      if (!tf.has(f.name)) {
-        changes.push({
-          kind: "drop_field",
-          entity: t.name,
-          detail: `DROP COLUMN ${t.name}.${f.name}`,
-          from: f,
-          destructive: true,
-          risk: "high",
-          riskReason: "Dropping a column deletes its data; verify no app reads it.",
-        });
+    const droppedFields = s.fields.filter((f) => !tf.has(f.name));
+    const addedFields = t.fields.filter((f) => !sf.has(f.name));
+    // Column rename candidates: dropped + added column in the same table with matching canonical type
+    if (droppedFields.length && addedFields.length) {
+      const matchedAdded = new Set<string>();
+      for (const df of droppedFields) {
+        const cand = addedFields.find((af) => !matchedAdded.has(af.name) && canonicalType(df.type) === canonicalType(af.type));
+        if (cand) {
+          matchedAdded.add(cand.name);
+          renames.push({
+            kind: "rename_candidate",
+            entity: t.name,
+            detail: `${t.name}.${df.name} → ${cand.name} (?) — same type (${df.type}), confirm RENAME COLUMN vs DROP+ADD`,
+            from: df.name,
+            to: cand.name,
+            destructive: false,
+            risk: "medium",
+            riskReason: "Confirm whether this is a column rename to avoid data loss.",
+          });
+        }
       }
+    }
+    for (const f of droppedFields) {
+      changes.push({
+        kind: "drop_field",
+        entity: t.name,
+        detail: `DROP COLUMN ${t.name}.${f.name}`,
+        from: f,
+        destructive: true,
+        risk: "high",
+        riskReason: "Dropping a column deletes its data; verify no app reads it.",
+      });
     }
     for (const f of t.fields) {
       const old = sf.get(f.name);
@@ -115,7 +135,11 @@ export function diffModels(source: SchemaModel, target: SchemaModel): SchemaDiff
             ? "NOT NULL without default on a populated table requires backfill/lock."
             : "Nullable/additive change.",
         });
-      } else if (old.type.toLowerCase() !== f.type.toLowerCase() || old.nullable !== f.nullable || (old.defaultValue ?? null) !== (f.defaultValue ?? null)) {
+      } else if (
+        canonicalType(old.type) !== canonicalType(f.type) ||
+        old.nullable !== f.nullable ||
+        normDefault(old.defaultValue) !== normDefault(f.defaultValue)
+      ) {
         changes.push({
           kind: "alter_field",
           entity: t.name,
@@ -123,28 +147,38 @@ export function diffModels(source: SchemaModel, target: SchemaModel): SchemaDiff
           from: old,
           to: f,
           destructive: !f.nullable && old.nullable ? true : false,
-          risk: typeRisk(old.type, f.type),
+          risk: canonicalType(old.type) !== canonicalType(f.type) ? typeRisk(old.type, f.type) : !f.nullable && old.nullable ? "medium" : "low",
           riskReason: "Type/nullability change may rewrite the table and fail on existing values.",
         });
       }
     }
-    // indexes
+    // indexes (add, drop, and modified definition)
     const si = new Map(s.indexes.map((i) => [i.name, i]));
     const ti = new Map(t.indexes.map((i) => [i.name, i]));
-    for (const n of si.keys()) {
-      if (!ti.has(n))
-        changes.push({ kind: "drop_index", entity: t.name, detail: `DROP INDEX ${n}`, destructive: false, risk: "medium", riskReason: "Dropping an index can regress dependent queries; verify workload." });
+    for (const [n, oldIx] of si) {
+      const newIx = ti.get(n);
+      if (!newIx) {
+        changes.push({ kind: "drop_index", entity: t.name, detail: `DROP INDEX ${n}`, from: oldIx, destructive: false, risk: "medium", riskReason: "Dropping an index can regress dependent queries; verify workload." });
+      } else if (indexSignature(oldIx) !== indexSignature(newIx)) {
+        changes.push({ kind: "drop_index", entity: t.name, detail: `DROP INDEX ${n}`, from: oldIx, destructive: false, risk: "medium", riskReason: "Index definition changed; drop and recreate concurrently." });
+        changes.push({ kind: "add_index", entity: t.name, detail: `CREATE ${newIx.unique ? "UNIQUE " : ""}INDEX ${n} ON ${t.name} (${newIx.columns.join(", ")})`, to: newIx, destructive: false, risk: "medium", riskReason: "Recreating modified index (use CONCURRENTLY on large tables)." });
+      }
     }
     for (const [n, ix] of ti) {
       if (!si.has(n))
         changes.push({ kind: "add_index", entity: t.name, detail: `CREATE ${ix.unique ? "UNIQUE " : ""}INDEX ${n} ON ${t.name} (${ix.columns.join(", ")})`, to: ix, destructive: false, risk: "medium", riskReason: "CREATE INDEX locks writes (use CONCURRENTLY on large tables)." });
     }
-    // constraints
+    // constraints (add, drop, and modified definition)
     const sc = new Map(s.constraints.map((c) => [c.name, c]));
     const tc = new Map(t.constraints.map((c) => [c.name, c]));
-    for (const n of sc.keys()) {
-      if (!tc.has(n))
-        changes.push({ kind: "drop_constraint", entity: t.name, detail: `DROP CONSTRAINT ${t.name}.${n}`, destructive: n.includes("pkey") || n.startsWith("fk"), risk: "medium", riskReason: "Removing integrity rules can admit bad data." });
+    for (const [n, oldCon] of sc) {
+      const newCon = tc.get(n);
+      if (!newCon) {
+        changes.push({ kind: "drop_constraint", entity: t.name, detail: `DROP CONSTRAINT ${t.name}.${n}`, from: oldCon, destructive: oldCon.kind === "primary_key" || oldCon.kind === "foreign_key", risk: "medium", riskReason: "Removing integrity rules can admit bad data." });
+      } else if (constraintSignature(oldCon) !== constraintSignature(newCon)) {
+        changes.push({ kind: "drop_constraint", entity: t.name, detail: `DROP CONSTRAINT ${t.name}.${n}`, from: oldCon, destructive: false, risk: "medium", riskReason: "Constraint definition changed; replace cleanly." });
+        changes.push({ kind: "add_constraint", entity: t.name, detail: `ADD CONSTRAINT ${n} (${newCon.kind})`, to: newCon, destructive: false, risk: newCon.kind === "foreign_key" ? "medium" : "low", riskReason: "Replacing modified constraint." });
+      }
     }
     for (const [n, c] of tc) {
       if (!sc.has(n))
@@ -165,9 +199,42 @@ function similarity(a: EntityModel, b: EntityModel): number {
   return union === 0 ? 0 : inter / union;
 }
 
+function canonicalType(raw: string): string {
+  const s = raw.toLowerCase().replace(/\s+/g, " ").trim();
+  const aliases: Record<string, string> = {
+    int: "integer", int4: "integer", serial: "integer", serial4: "integer",
+    int8: "bigint", bigserial: "bigint", serial8: "bigint",
+    int2: "smallint", smallserial: "smallint",
+    bool: "boolean",
+    float8: "double precision", float4: "real",
+    "timestamp with time zone": "timestamptz",
+    "timestamp without time zone": "timestamp",
+    decimal: "numeric",
+  };
+  if (aliases[s]) return aliases[s];
+  const charVar = s.match(/^character varying\s*(\([^)]+\))?$/);
+  if (charVar) return `varchar${charVar[1] ?? ""}`;
+  const numDec = s.match(/^decimal\s*(\([^)]+\))$/);
+  if (numDec) return `numeric${numDec[1]}`;
+  return s;
+}
+
+function normDefault(d: string | null | undefined): string | null {
+  if (d == null || d.trim() === "") return null;
+  return d.trim().replace(/::[a-z_ ]+(\([^)]*\))?(\[\])?$/i, "").replace(/\s+/g, " ").toLowerCase();
+}
+
+function indexSignature(ix: IndexModel): string {
+  return `${(ix.method ?? "btree").toLowerCase()}|${ix.unique ? "u" : "n"}|${ix.columns.join(",")}|${(ix.includeColumns ?? []).join(",")}|${(ix.predicate ?? "").trim().toLowerCase()}`;
+}
+
+function constraintSignature(c: ConstraintModel): string {
+  return `${c.kind}|${c.columns.join(",")}|${c.referencedEntity ?? ""}|${(c.referencedColumns ?? []).join(",")}|${(c.onDelete ?? "").toUpperCase()}|${(c.onUpdate ?? "").toUpperCase()}|${(c.definition ?? "").trim()}`;
+}
+
 function typeRisk(from: string, to: string): "low" | "medium" | "high" {
-  const f = from.toLowerCase();
-  const t = to.toLowerCase();
+  const f = canonicalType(from);
+  const t = canonicalType(to);
   if (f === t) return "low";
   if ((f.includes("varchar") || f === "text") && (t.includes("varchar") || t === "text")) return "low";
   if (f === "integer" && t === "bigint") return "medium";
@@ -192,13 +259,21 @@ export function generatePostgresMigration(diff: SchemaDiff, source: SchemaModel,
   const tMap = new Map(target.entities.map((e) => [e.name, e]));
   const sMap = new Map(source.entities.map((e) => [e.name, e]));
 
+  // 0. Ensure any newly introduced schemas exist before creating tables inside them.
+  const sourceSchemas = new Set(source.namespaces);
+  const newSchemas = [...new Set(target.namespaces.filter((ns) => ns && ns !== "public" && !sourceSchemas.has(ns)))];
+  for (const ns of newSchemas) {
+    up.push(`CREATE SCHEMA IF NOT EXISTS ${q(ns)};`);
+  }
+  if (newSchemas.length) up.push("");
+
   // 1. New tables, referenced entities first.
   const newTables = diff.changes.filter((c) => c.kind === "add_entity");
   for (const name of topoOrder(newTables.map((c) => c.entity), target)) {
     const entity = tMap.get(name)!;
-    if (entity.kind === "collection") continue;
-    up.push(`-- + table ${name}`, createTableSql(entity), ...createIndexes(entity, "postgres"));
-    down.unshift(`DROP TABLE IF EXISTS ${q(name)};`);
+    if (entity.kind !== "table") continue;
+    up.push(`-- + table ${name}`, createTable(entity, "postgres", target), ...createIndexes(entity, "postgres"));
+    down.splice(3, 0, `DROP TABLE IF EXISTS ${q(name)};`);
   }
   // 2. New columns.
   for (const c of diff.changes.filter((x) => x.kind === "add_field")) {
@@ -231,40 +306,59 @@ export function generatePostgresMigration(diff: SchemaDiff, source: SchemaModel,
       down.push(`ALTER TABLE ${q(c.entity)} ALTER COLUMN ${q(to.name)} ${from.defaultValue ? `SET DEFAULT ${from.defaultValue}` : "DROP DEFAULT"};`);
     }
   }
-  // 4. Constraints.
-  for (const c of diff.changes.filter((x) => x.kind === "add_constraint")) {
-    const k = c.to as { kind: string; name: string; columns: string[]; referencedEntity?: string | null; referencedColumns?: string[]; definition?: string | null };
+  const formatPgIndex = (entityName: string, ix: IndexModel): string => {
+    const cols = ix.columns.map((x) => qcol("postgres", x)).join(", ");
+    const incl = ix.includeColumns?.length ? ` INCLUDE (${ix.includeColumns.map((x) => q(x)).join(", ")})` : "";
+    const pred = ix.partial && ix.predicate ? ` ${ix.predicate.replace(/^\s*WHERE\s+/i, "WHERE ")}` : "";
+    return `CREATE ${ix.unique ? "UNIQUE " : ""}INDEX CONCURRENTLY IF NOT EXISTS ${q(ix.name)} ON ${q(entityName)} USING ${ix.method ?? "btree"} (${cols})${incl}${pred};`;
+  };
+  const qualifyIndex = (entityName: string, indexName: string): string => {
+    const ns = entityName.includes(".") ? entityName.split(".")[0] : null;
+    return ns ? `${q(ns)}.${q(indexName)}` : q(indexName);
+  };
+  const pgConstraintAdd = (entityName: string, k: ConstraintModel): string[] => {
     if (k.kind === "foreign_key") {
-      up.push(`ALTER TABLE ${q(c.entity)} ADD CONSTRAINT ${q(k.name)} FOREIGN KEY (${k.columns.map((x) => q(x)).join(", ")}) REFERENCES ${q(k.referencedEntity ?? "")} (${(k.referencedColumns ?? ["id"]).map((x) => q(x)).join(", ")}) NOT VALID;`);
-      up.push(`ALTER TABLE ${q(c.entity)} VALIDATE CONSTRAINT ${q(k.name)};`);
-      risks.push(`FK ${k.name} validation scans the child table; NOT VALID + VALIDATE limits the lock window.`);
-    } else if (k.kind === "unique") {
-      up.push(`ALTER TABLE ${q(c.entity)} ADD CONSTRAINT ${q(k.name)} UNIQUE (${k.columns.map((x) => q(x)).join(", ")});`);
-    } else if (k.kind === "check") {
-      up.push(`ALTER TABLE ${q(c.entity)} ADD CONSTRAINT ${q(k.name)} CHECK (${k.definition ?? "TRUE"}) NOT VALID;`, `ALTER TABLE ${q(c.entity)} VALIDATE CONSTRAINT ${q(k.name)};`);
-    } else if (k.kind === "primary_key") {
-      up.push(`ALTER TABLE ${q(c.entity)} ADD CONSTRAINT ${q(k.name)} PRIMARY KEY (${k.columns.map((x) => q(x)).join(", ")});`);
+      const del = k.onDelete && !/^no action$/i.test(k.onDelete) ? ` ON DELETE ${k.onDelete}` : "";
+      const upd = k.onUpdate && !/^no action$/i.test(k.onUpdate) ? ` ON UPDATE ${k.onUpdate}` : "";
+      return [
+        `ALTER TABLE ${q(entityName)} ADD CONSTRAINT ${q(k.name)} FOREIGN KEY (${k.columns.map((x) => q(x)).join(", ")}) REFERENCES ${q(k.referencedEntity ?? "")} (${(k.referencedColumns?.length ? k.referencedColumns : ["id"]).map((x) => q(x)).join(", ")})${del}${upd} NOT VALID;`,
+        `ALTER TABLE ${q(entityName)} VALIDATE CONSTRAINT ${q(k.name)};`,
+      ];
     }
+    if (k.kind === "unique") return [`ALTER TABLE ${q(entityName)} ADD CONSTRAINT ${q(k.name)} UNIQUE (${k.columns.map((x) => q(x)).join(", ")});`];
+    if (k.kind === "check") return [`ALTER TABLE ${q(entityName)} ADD CONSTRAINT ${q(k.name)} CHECK (${k.definition ?? "TRUE"}) NOT VALID;`, `ALTER TABLE ${q(entityName)} VALIDATE CONSTRAINT ${q(k.name)};`];
+    if (k.kind === "primary_key") return [`ALTER TABLE ${q(entityName)} ADD CONSTRAINT ${q(k.name)} PRIMARY KEY (${k.columns.map((x) => q(x)).join(", ")});`];
+    return [];
+  };
+
+  // 4. Constraints (drop modified/removed first so replacements with the same name succeed).
+  for (const c of diff.changes.filter((x) => x.kind === "drop_constraint")) {
+    const oldCon = (c.from as ConstraintModel | undefined) ?? sMap.get(c.entity)?.constraints.find((k) => k.name === (c.detail.split(".").pop() ?? ""));
+    const name = oldCon?.name ?? c.detail.split(".").pop() ?? "";
+    up.push(`-- REVIEW: removing an integrity rule`, `ALTER TABLE ${q(c.entity)} DROP CONSTRAINT IF EXISTS ${q(name)};`);
+    if (oldCon) down.push(...pgConstraintAdd(c.entity, oldCon));
+    else down.push(`-- MANUAL: restore constraint ${name} from the source schema backup`);
+    risks.push(`${c.detail} removes an integrity rule.`);
+  }
+  for (const c of diff.changes.filter((x) => x.kind === "add_constraint")) {
+    const k = c.to as ConstraintModel;
+    up.push(...pgConstraintAdd(c.entity, k));
+    if (k.kind === "foreign_key") risks.push(`FK ${k.name} validation scans the child table; NOT VALID + VALIDATE limits the lock window.`);
     down.push(`ALTER TABLE ${q(c.entity)} DROP CONSTRAINT IF EXISTS ${q(k.name)};`);
   }
   // 5. Index changes run after COMMIT: CONCURRENTLY is illegal in a transaction.
-  for (const c of diff.changes.filter((x) => x.kind === "add_index")) {
-    const ix = c.to as { name: string; columns: string[]; unique: boolean; method?: string };
-    onlineUp.push(`CREATE ${ix.unique ? "UNIQUE " : ""}INDEX CONCURRENTLY IF NOT EXISTS ${q(ix.name)} ON ${q(c.entity)} USING ${ix.method ?? "btree"} (${ix.columns.map((x) => q(x)).join(", ")});`);
-    onlineDown.push(`DROP INDEX CONCURRENTLY IF EXISTS ${q(ix.name)};`);
-  }
+  // Drops go before adds so modified indexes with the same name can be recreated cleanly.
   for (const c of diff.changes.filter((x) => x.kind === "drop_index")) {
-    const name = c.detail.replace(/^DROP INDEX\s+/, "");
-    onlineUp.push(`DROP INDEX CONCURRENTLY IF EXISTS ${q(name)};`);
-    const old = sMap.get(c.entity)?.indexes.find((ix) => ix.name === name);
-    if (old) onlineDown.push(`CREATE ${old.unique ? "UNIQUE " : ""}INDEX CONCURRENTLY IF NOT EXISTS ${q(old.name)} ON ${q(c.entity)} USING ${old.method ?? "btree"} (${old.columns.map((x) => q(x)).join(", ")});`);
+    const old = (c.from as IndexModel | undefined) ?? sMap.get(c.entity)?.indexes.find((ix) => ix.name === c.detail.replace(/^DROP INDEX\s+/, ""));
+    const name = old?.name ?? c.detail.replace(/^DROP INDEX\s+/, "");
+    onlineUp.push(`DROP INDEX CONCURRENTLY IF EXISTS ${qualifyIndex(c.entity, name)};`);
+    if (old) onlineDown.push(formatPgIndex(c.entity, old));
     risks.push(`${c.detail} can regress dependent queries; verify workload before applying.`);
   }
-  for (const c of diff.changes.filter((x) => x.kind === "drop_constraint")) {
-    const name = c.detail.split(".").pop() ?? "";
-    up.push(`-- REVIEW: removing an integrity rule`, `ALTER TABLE ${q(c.entity)} DROP CONSTRAINT IF EXISTS ${q(name)};`);
-    down.push(`-- MANUAL: restore constraint ${name} from the source schema backup`);
-    risks.push(`${c.detail} removes an integrity rule.`);
+  for (const c of diff.changes.filter((x) => x.kind === "add_index")) {
+    const ix = c.to as IndexModel;
+    onlineUp.push(formatPgIndex(c.entity, ix));
+    onlineDown.push(`DROP INDEX CONCURRENTLY IF EXISTS ${qualifyIndex(c.entity, ix.name)};`);
   }
   // 6. Data-destructive operations stay disabled until explicitly reviewed.
   for (const c of diff.changes.filter((x) => x.kind === "drop_field")) {
@@ -284,22 +378,8 @@ export function generatePostgresMigration(diff: SchemaDiff, source: SchemaModel,
   return { up: up.join("\n"), down: down.join("\n"), risks };
 }
 
-function createTableSql(e: EntityModel): string {
-  const cols = e.fields.map(
-    (f) => `  ${q(f.name)} ${f.type}${f.nullable ? "" : " NOT NULL"}${f.defaultValue ? ` DEFAULT ${f.defaultValue}` : ""}`
-  );
-  const pk = e.constraints.find((c) => c.kind === "primary_key");
-  if (pk) cols.push(`  CONSTRAINT ${q(pk.name)} PRIMARY KEY (${pk.columns.map((c) => q(c)).join(", ")})`);
-  for (const c of e.constraints.filter((x) => x.kind === "unique")) {
-    cols.push(`  CONSTRAINT ${q(c.name)} UNIQUE (${c.columns.map((x) => q(x)).join(", ")})`);
-  }
-  for (const c of e.constraints.filter((x) => x.kind === "foreign_key")) {
-    cols.push(
-      `  CONSTRAINT ${q(c.name)} FOREIGN KEY (${c.columns.map((x) => q(x)).join(", ")}) REFERENCES ${q(c.referencedEntity ?? "")} (${(c.referencedColumns ?? ["id"]).map((x) => q(x)).join(", ")})`
-    );
-  }
-  return `CREATE TABLE IF NOT EXISTS ${q(e.name)} (\n${cols.join(",\n")}\n);`;
-}
+// Table DDL is rendered via sql-dialects.createTable so ON DELETE, ON UPDATE,
+// CHECK, IDENTITY and PARTITION BY clauses stay consistent across DDL & migrations.
 
 // ─── Mongo migration generation ────────────────────────────────────
 export function generateMongoMigration(diff: SchemaDiff, source: SchemaModel, target: SchemaModel): { up: string; down: string; risks: string[] } {

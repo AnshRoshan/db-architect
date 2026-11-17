@@ -113,22 +113,36 @@ function groupLossy(mappings: FieldMapping[]): string[] {
 function planSqlToSql(model: SchemaModel, target: SqlDialect, opts: Opts): Core {
   const src = model.engine;
   const label = ENGINES[target].label;
-  const ns = target === "postgres" ? opts.targetNamespace || "public" : target === "sqlite" ? "main" : opts.targetNamespace || ident(model.database || "app");
+  const defaultNs = target === "postgres" ? opts.targetNamespace || "public" : target === "sqlite" ? "main" : opts.targetNamespace || ident(model.database || "app");
+  const tables = model.entities.filter((e) => e.kind === "table");
+  const distinctSrcNs = [...new Set(tables.map((e) => e.namespace))];
+  // Preserve multi-schema layouts when targeting Postgres/MySQL unless the user forced a single target namespace.
+  const keepSchemas = distinctSrcNs.length > 1 && !opts.targetNamespace && (target === "postgres" || target === "mysql");
   const tm = emptyModel(target, model.database);
-  tm.namespaces = [ns];
   tm.sourceMetadata.source = `transform:${src}->${target}`;
   tm.sourceMetadata.limitations.push("Generated target design — not applied to any database.");
   const mappings: FieldMapping[] = [], decisions: Decision[] = [], warnings: string[] = [], risks: string[] = [];
-  const tables = model.entities.filter((e) => e.kind === "table");
   for (const e of model.entities) if (e.kind !== "table") warnings.push(`${e.kind} ${e.name} skipped — only tables are transformed; recreate views manually.`);
-  const nameMap = new Map(tables.map((e) => [e.name, `${ns}.${e.shortName}`]));
+  // Avoid table-name collisions when flattening multiple schemas into one namespace (e.g. SQLite or forced targetNamespace).
+  const shortCounts = new Map<string, number>();
+  for (const e of tables) shortCounts.set(e.shortName, (shortCounts.get(e.shortName) ?? 0) + 1);
+  const targetMeta = new Map<string, { ns: string; short: string; full: string }>();
+  for (const e of tables) {
+    const targetNs = keepSchemas ? e.namespace : defaultNs;
+    const short = !keepSchemas && (shortCounts.get(e.shortName) ?? 0) > 1 ? `${ident(e.namespace)}_${e.shortName}` : e.shortName;
+    targetMeta.set(e.name, { ns: targetNs, short, full: `${targetNs}.${short}` });
+  }
+  tm.namespaces = [...new Set([...targetMeta.values()].map((x) => x.ns))];
+  if (!tm.namespaces.length) tm.namespaces = [defaultNs];
+  const nameMap = new Map([...targetMeta.entries()].map(([k, v]) => [k, v.full]));
   const srcByName = new Map(tables.map((e) => [e.name, e]));
   let identityCols = 0;
 
   for (const e of tables) {
-    const tname = nameMap.get(e.name)!;
-    const eid = entityId(target, ns, e.shortName);
-    const te: EntityModel = { id: eid, name: tname, shortName: e.shortName, namespace: ns, kind: "table", engine: target, fields: [], indexes: [], constraints: [], comment: e.comment, metadata: { transformedFrom: e.name } };
+    const meta = targetMeta.get(e.name)!;
+    const tname = meta.full;
+    const eid = entityId(target, meta.ns, meta.short);
+    const te: EntityModel = { id: eid, name: tname, shortName: meta.short, namespace: meta.ns, kind: "table", engine: target, fields: [], indexes: [], constraints: [], comment: e.comment, metadata: { transformedFrom: e.name } };
     for (const f of e.fields) {
       const info = parseType(f.type, src);
       const auto = isAutoIncrement(f);
@@ -562,10 +576,11 @@ function buildRunbook(src: Engine, dst: Engine, core: Core): { runbook: RunbookP
   ];
   const q: string[] = [];
   const rt = core.runtime;
-  if (rt.kind === "sql_to_sql") for (const t of rt.tables) q.push(`-- ${t.source}`, `SELECT COUNT(*) FROM ${t.source.split(".").pop()};  -- source (${ENGINES[src].label})`, `SELECT COUNT(*) FROM ${t.target.split(".").pop()};  -- target (${target})`);
+  const sqlRef = (eng: Engine, full: string) => (eng === "sqlite" ? full.split(".").pop()! : full);
+  if (rt.kind === "sql_to_sql") for (const t of rt.tables) q.push(`-- ${t.source}`, `SELECT COUNT(*) FROM ${sqlRef(src, t.source)};  -- source (${ENGINES[src].label})`, `SELECT COUNT(*) FROM ${sqlRef(dst, t.target)};  -- target (${target})`);
   if (rt.kind === "sql_to_mongo") for (const c of rt.collections) {
-    q.push(`-- ${c.source}`, `SELECT COUNT(*) FROM ${c.source.split(".").pop()};  -- source`, `db.${c.target}.countDocuments();  // target`);
-    for (const em of c.embeds) q.push(`SELECT COUNT(*) FROM ${em.source.split(".").pop()};  -- source (embedded)`, `db.${c.target}.aggregate([{ $unwind: "$${em.field}" }, { $count: "n" }]);  // target`);
+    q.push(`-- ${c.source}`, `SELECT COUNT(*) FROM ${sqlRef(src, c.source)};  -- source`, `db.${c.target}.countDocuments();  // target`);
+    for (const em of c.embeds) q.push(`SELECT COUNT(*) FROM ${sqlRef(src, em.source)};  -- source (embedded)`, `db.${c.target}.aggregate([{ $unwind: "$${em.field}" }, { $count: "n" }]);  // target`);
   }
   if (rt.kind === "mongo_to_sql") for (const r of rt.roots) {
     q.push(`-- ${r.source}`, `db.${r.source}.countDocuments();  // source`, `SELECT COUNT(*) FROM ${r.target.split(".").pop()};  -- target`);

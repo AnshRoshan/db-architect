@@ -59,7 +59,7 @@ export const CANDIDATES: Candidate[] = [
   { id: "mongodb", label: "MongoDB", tagline: "Flexible documents with built-in horizontal scaling", family: "document", openSource: "source-available", toolSupport: "full",
     bestFor: ["Evolving, nested document data", "Content, catalogs and user profiles", "Horizontal scale via sharding"], avoidWhen: ["Heavily relational data with many-to-many joins", "Multi-collection transactions are the norm"], watch: ["Schema discipline moves into the application (use $jsonSchema)", "Unbounded arrays and 16 MB document limit", "Check current licence terms (SSPL)"],
     caps: c([1, 5, 3, 3, 3, 3, 2, 3, 5, 4, 4, 5, 2, 3, 0, 4, 4, 5, 5, 4, 4]) },
-  { id: "redis", label: "Redis", tagline: "In-memory data structures for sub-millisecond access", family: "key-value", openSource: "source-available", toolSupport: "planned",
+  { id: "redis", label: "Redis", tagline: "In-memory data structures for sub-millisecond access", family: "key-value", openSource: "source-available", toolSupport: "full",
     bestFor: ["Caching and sessions", "Rate limiting, queues, leaderboards", "Ephemeral data with TTL"], avoidWhen: ["It must be the durable system of record", "Dataset far exceeds memory budget"], watch: ["Persistence is a trade-off (RDB/AOF)", "Check current licence terms"],
     caps: c([0, 2, 5, 3, 2, 1, 1, 2, 3, 5, 5, 4, 0, 3, 1, 3, 2, 3, 3, 5, 3]) },
   { id: "dynamodb", label: "DynamoDB", tagline: "Fully managed, serverless key-value/document store on AWS", family: "key-value", openSource: "no", toolSupport: "advisor",
@@ -156,9 +156,19 @@ export function deriveProfile(model: SchemaModel): { profile: Partial<WorkloadPr
   const profile: Partial<WorkloadProfile> = {};
   const needs = new Set<Need>();
   const fields = model.entities.flatMap((e) => e.fields);
-  if (isRelational(model.engine)) {
+  if (model.engine === "redis") {
+    profile.dataShape = "key_value";
+    profile.queries = "key_lookup";
+    profile.latency = "ultra_low";
+    profile.consistency = "eventual";
+    profile.schema = "evolving";
+    needs.add("ttl");
+    signals.push(`Redis key model with ${model.entities.length} key pattern(s) → key-value & ultra-low-latency cache/ephemeral workload`);
+    const withTtl = model.entities.filter((e) => ((e.metadata?.ttl as { with?: number } | undefined)?.with ?? 0) > 0).length;
+    if (withTtl > 0) signals.push(`${withTtl}/${model.entities.length} key patterns use TTL expiry → automatic expiry needed`);
+  } else if (isRelational(model.engine)) {
     profile.dataShape = "relational"; profile.schema = "stable";
-    signals.push(`${model.engine} schema with ${model.entities.length} entities → relational data shape`);
+    signals.push(`${model.engine} schema with ${model.entities.length} entities across ${model.namespaces.length} schema(s) → relational data shape`);
     const fks = model.entities.reduce((a, e) => a + e.constraints.filter((x) => x.kind === "foreign_key").length, 0);
     if (fks > 0) { needs.add("transactions"); signals.push(`${fks} foreign key(s) → integrity and transactions matter`); }
     if (model.relationships.length >= 3) { profile.queries = "joins"; signals.push(`${model.relationships.length} relationships → join-heavy access likely`); }

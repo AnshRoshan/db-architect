@@ -14,6 +14,7 @@ export interface TypeInfo {
   precision?: number;
   scale?: number;
   unsigned?: boolean;
+  elementType?: string;
 }
 
 export interface RenderedType {
@@ -34,7 +35,7 @@ export function parseType(rawIn: string, engine: Engine): TypeInfo {
   const base = s.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
   const nums = args ? args.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !Number.isNaN(n)) : [];
   const mk = (family: Family, extra: Partial<TypeInfo> = {}): TypeInfo => ({ family, raw, unsigned, ...extra });
-  if (isArray) return mk("array");
+  if (isArray) return mk("array", { elementType: base || "text" });
   if (base === "tinyint") return engine === "mysql" && nums[0] === 1 ? mk("bool") : mk("int2");
   if (/^(smallint|int2|smallserial)$/.test(base)) return mk("int2");
   if (engine === "sqlite" && base === "integer") return mk("int8");
@@ -87,7 +88,7 @@ export function renderType(t: TypeInfo, to: Engine): RenderedType {
       case "json": return ok("jsonb");
       case "bytes": return ok("bytea");
       case "objectId": return ok("char(24)", "ObjectId stored as 24-char hex string");
-      case "array": return ok("jsonb", "Array stored as JSONB");
+      case "array": return t.elementType ? ok(`${t.elementType}[]`, "Native PostgreSQL array preserved") : ok("jsonb", "Array stored as JSONB");
       case "enum": return lossy("text", "ENUM members not carried over — add a CHECK constraint or CREATE TYPE");
       default: return lossy("text", `Unrecognized type "${t.raw}" mapped to text`);
     }

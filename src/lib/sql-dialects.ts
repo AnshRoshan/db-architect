@@ -78,7 +78,8 @@ export function createTable(e: EntityModel, dialect: SqlDialect, model: SchemaMo
   if (!opts.deferForeignKeys) {
     for (const c of e.constraints.filter((x) => x.kind === "foreign_key")) lines.push(`CONSTRAINT ${q(dialect, c.name)} ${fkClause(c, dialect, model)}`);
   }
-  const suffix = dialect === "mysql" ? " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" : "";
+  const partClause = dialect === "postgres" && typeof e.metadata?.partitionBy === "string" ? ` ${e.metadata.partitionBy}` : "";
+  const suffix = dialect === "mysql" ? " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" : partClause;
   return `CREATE TABLE ${qualified(dialect, e)} (\n  ${lines.join(",\n  ")}\n)${suffix};`;
 }
 
@@ -87,10 +88,11 @@ export function createIndexes(e: EntityModel, dialect: SqlDialect): string[] {
   const uniques = new Set(e.constraints.filter((c) => c.kind === "unique" || c.kind === "primary_key").map((c) => c.columns.join()));
   for (const ix of e.indexes) {
     if (!ix.columns.length) continue;
-    if (uniques.has(ix.columns.join()) && ix.unique) continue;
+    if (uniques.has(ix.columns.join()) && ix.unique && !ix.partial && !(ix.includeColumns?.length)) continue;
     let s = `CREATE ${ix.unique ? "UNIQUE " : ""}INDEX ${q(dialect, ix.name)} ON ${qualified(dialect, e)}`;
     if (dialect === "postgres" && ix.method && ix.method !== "btree") s += ` USING ${ix.method}`;
     s += ` (${ix.columns.map((c) => qcol(dialect, c)).join(", ")})`;
+    if (dialect === "postgres" && ix.includeColumns?.length) s += ` INCLUDE (${ix.includeColumns.map((c) => q(dialect, c)).join(", ")})`;
     if (ix.partial && ix.predicate && dialect !== "mysql") s += ` ${ix.predicate.replace(/^\s*WHERE\s+/i, "WHERE ")}`;
     out.push(s + ";");
   }
@@ -101,9 +103,25 @@ export function generateDdl(model: SchemaModel, dialect: SqlDialect, opts: { def
   const label = { postgres: "PostgreSQL", mysql: "MySQL (InnoDB)", sqlite: "SQLite" }[dialect];
   const ordered = topoEntities(model).filter((e) => e.kind === "table");
   const out: string[] = [`-- DB Architect · target schema (${label})`, `-- Generated ${new Date().toISOString()} — review before applying`, ""];
-  const ns = model.namespaces[0];
-  if (dialect === "postgres" && ns && ns !== "public") out.push(`CREATE SCHEMA IF NOT EXISTS ${q(dialect, ns)};`, "");
-  if (dialect === "mysql" && ns) out.push(`CREATE DATABASE IF NOT EXISTS ${q(dialect, ns)} DEFAULT CHARACTER SET utf8mb4;`, `USE ${q(dialect, ns)};`, "");
+  const allNamespaces = [...new Set([...model.namespaces, ...ordered.map((e) => e.namespace)])].filter(Boolean);
+  if (dialect === "postgres") {
+    const customSchemas = allNamespaces.filter((n) => n !== "public");
+    if (customSchemas.length) {
+      for (const schema of customSchemas) out.push(`CREATE SCHEMA IF NOT EXISTS ${q(dialect, schema)};`);
+      out.push("");
+    }
+    if (model.catalog?.enums?.length) {
+      for (const en of model.catalog.enums) {
+        out.push(`-- enum ${en.namespace}.${en.name}`, `CREATE TYPE ${q(dialect, en.namespace)}.${q(dialect, en.name)} AS ENUM (${en.values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")});`);
+      }
+      out.push("");
+    }
+  }
+  const ns = allNamespaces[0];
+  if (dialect === "mysql" && ns) {
+    for (const dbn of allNamespaces) out.push(`CREATE DATABASE IF NOT EXISTS ${q(dialect, dbn)} DEFAULT CHARACTER SET utf8mb4;`);
+    out.push(`USE ${q(dialect, ns)};`, "");
+  }
   if (dialect === "sqlite") out.push("PRAGMA foreign_keys = ON;", "");
   out.push("-- Phase 1 · tables");
   for (const e of ordered) out.push(createTable(e, dialect, model, opts), "");
