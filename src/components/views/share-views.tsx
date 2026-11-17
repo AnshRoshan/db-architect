@@ -2,31 +2,69 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Braces, Cable, Clock, Code2, Download, ExternalLink, FileJson, FileText, Globe, History, Image as ImageIcon, KeyRound, ListChecks, ShieldCheck } from "lucide-react";
+import { Braces, Cable, Clock, Code2, Download, ExternalLink, FileJson, FileText, Globe, History, Image as ImageIcon, KeyRound, ListChecks, Loader2, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import { Card, CardHeader, Chip, EmptyState, EngineChip, SearchInput, StatusChip } from "@/components/ui";
 import type { ModelT, ScanRow } from "./types";
 
-// ── Reports ─────────────────────────────────────────────────────────
-export function ReportsView({ scanId, model, findingsCount, onOpenDiagram }: { scanId: string; model: ModelT | null; findingsCount: number; onOpenDiagram: () => void }) {
+// ── Reports (uses authenticated fetch + Blob so exports work even in cookie-less iframes) ──
+export function ReportsView({ projectId, scanId, model, findingsCount, onOpenDiagram, onOpenHandoff }: { projectId?: string; scanId: string; model: ModelT | null; findingsCount: number; onOpenDiagram: () => void; onOpenHandoff?: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   if (!scanId || !model) return <EmptyState icon={FileText} title="No schema selected" hint="Pick a schema version to export reports and documentation." />;
+
+  async function fetchExport(key: string, url: string, filename: string, openInTab: boolean) {
+    setBusy(key); setErr(null);
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) { const j = await resp.json().catch(() => ({})); setErr(j.error ?? `Export failed (${resp.status})`); setBusy(null); return; }
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      if (openInTab) {
+        window.open(blobUrl, "_blank", "noopener,noreferrer");
+      } else {
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = filename;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch {
+      setErr("Could not download the report. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const base = `/api/v1/reports?scanId=${scanId}`;
+  const sid = scanId.slice(0, 8);
   const exports = [
-    { href: `${base}&format=html`, icon: Globe, title: "Interactive HTML report", desc: "Overview, diagram, findings with evidence, and full entity inventory. Share as a single file.", tag: "Best for stakeholders", primary: true, newTab: true },
-    { href: `${base}&format=markdown`, icon: FileText, title: "Markdown documentation", desc: "Drop into a wiki, README or pull request. Tables per entity, findings per rule.", tag: "Best for engineers" },
-    { href: `${base}&format=json`, icon: FileJson, title: "Canonical JSON model", desc: "Engine-neutral schema model v1 plus findings — for CI, drift checks and tooling.", tag: "Best for automation", newTab: true },
-    { href: `/api/v1/scans/${scanId}`, icon: Braces, title: "Raw scan payload", desc: "Model, findings, saved diagram layout and SVG for this version.", tag: "Debugging", newTab: true },
+    { key: "html", href: `${base}&format=html`, filename: `db-architect-${sid}.html`, icon: Globe, title: "Interactive HTML report", desc: "Overview, diagram, schema dependencies, findings with evidence, and full entity inventory.", tag: "Best for stakeholders", primary: true, newTab: true },
+    { key: "md", href: `${base}&format=markdown`, filename: `db-architect-${sid}.md`, icon: FileText, title: "Markdown documentation", desc: "Drop into a wiki, README or pull request. Includes schema graph, tables and findings.", tag: "Best for engineers", newTab: false },
+    { key: "json", href: `${base}&format=json`, filename: `db-architect-${sid}.json`, icon: FileJson, title: "Canonical JSON model", desc: "Engine-neutral schema model v1 plus findings — for CI, drift checks and tooling.", tag: "Best for automation", newTab: false },
+    { key: "raw", href: `/api/v1/scans/${scanId}`, filename: `db-architect-scan-${sid}.json`, icon: Braces, title: "Raw scan payload", desc: "Model, findings, saved diagram layout and SVG for this version.", tag: "Debugging", newTab: false },
   ];
   const fields = model.entities.reduce((a, e) => a + e.fields.length, 0);
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
       <div className="space-y-4">
+        {err && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-medium text-red-700 dark:text-red-300">{err}</div>}
         <div className="grid gap-3 md:grid-cols-2">
           {exports.map((x, i) => (
-            <motion.a key={x.title} href={x.href} target={x.newTab ? "_blank" : undefined} rel="noreferrer" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .05 }} className={`group relative overflow-hidden rounded-2xl border p-5 transition card-hover ${x.primary ? "border-indigo-400/40 bg-gradient-to-br from-indigo-500/10 to-violet-500/5" : "surface"}`}>
-              <div className="flex items-start gap-3"><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${x.primary ? "bg-indigo-600 text-white" : "bg-muted text-ink"}`}><x.icon size={18} /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="text-sm font-bold text-ink">{x.title}</h3>{x.newTab ? <ExternalLink size={12} className="text-ink-muted" /> : <Download size={12} className="text-ink-muted" />}</div><p className="mt-1 text-xs leading-5 text-ink-muted">{x.desc}</p><Chip className="mt-3 bg-muted text-ink-muted ring-line">{x.tag}</Chip></div></div>
-            </motion.a>
+            <motion.button key={x.key} disabled={busy !== null} onClick={() => fetchExport(x.key, x.href, x.filename, x.newTab)} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * .05 }} className={`group relative overflow-hidden rounded-2xl border p-5 text-left transition card-hover disabled:opacity-60 ${x.primary ? "border-indigo-400/40 bg-gradient-to-br from-indigo-500/10 to-violet-500/5" : "surface"}`}>
+              <div className="flex items-start gap-3"><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${x.primary ? "bg-indigo-600 text-white" : "bg-muted text-ink"}`}>{busy === x.key ? <Loader2 size={18} className="animate-spin" /> : <x.icon size={18} />}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="text-sm font-bold text-ink">{x.title}</h3>{x.newTab ? <ExternalLink size={12} className="text-ink-muted" /> : <Download size={12} className="text-ink-muted" />}</div><p className="mt-1 text-xs leading-5 text-ink-muted">{x.desc}</p><Chip className="mt-3 bg-muted text-ink-muted ring-line">{x.tag}</Chip></div></div>
+            </motion.button>
           ))}
         </div>
+        {projectId && <Card>
+          <CardHeader icon={Workflow} title="Full System Architecture Report" subtitle="Exports every datastore in this project, their roles, cross-store links, declared flows and ARCH-* findings." actions={<div className="flex flex-wrap gap-2">
+            <button disabled={busy !== null} onClick={() => fetchExport("sys-html", `/api/v1/reports?scope=system&projectId=${projectId}&format=html`, `db-architect-system-${projectId.slice(0, 8)}.html`, true)} className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-muted">HTML</button>
+            <button disabled={busy !== null} onClick={() => fetchExport("sys-md", `/api/v1/reports?scope=system&projectId=${projectId}&format=markdown`, `db-architect-system-${projectId.slice(0, 8)}.md`, false)} className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-muted">Markdown</button>
+            <button disabled={busy !== null} onClick={() => fetchExport("sys-json", `/api/v1/reports?scope=system&projectId=${projectId}&format=json`, `db-architect-system-${projectId.slice(0, 8)}.json`, false)} className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-muted">JSON</button>
+          </div>} />
+        </Card>}
+        {onOpenHandoff && <Card>
+          <CardHeader icon={Sparkles} title="Export for ChatGPT, Claude Code & Cursor (AI Handoff)" subtitle="Generate a portable SKILL.md, CLAUDE.md, .cursor/rules/.mdc, or a copy-paste ChatGPT prompt pack — and verify the AI's reply back inside DB Architect." actions={<button onClick={onOpenHandoff} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500">Open AI Handoff</button>} />
+        </Card>}
         <Card>
           <CardHeader icon={ImageIcon} title="Diagram exports" subtitle="SVG and PNG are exported from the live diagram canvas, so they include your saved layout, hidden entities and collapsed nodes." actions={<button onClick={onOpenDiagram} className="rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-muted">Open diagram</button>} />
         </Card>
