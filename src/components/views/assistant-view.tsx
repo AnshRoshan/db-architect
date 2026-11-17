@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Bot, Check, Copy, Gauge, Loader2, Network, RotateCcw, ShieldCheck, Wrench } from "lucide-react";
+import { ArrowRight, ArrowUp, Bot, Check, Copy, Gauge, Loader2, Network, RotateCcw, ShieldCheck, Sparkles, Wrench } from "lucide-react";
 import Markdown from "@/components/markdown";
 import { Card, Chip, EmptyState, Segmented } from "@/components/ui";
 import type { ModelT } from "./types";
@@ -16,7 +16,7 @@ const MODES: Record<Mode, { label: string; icon: typeof Network; blurb: string; 
   operations: { label: "Operations", icon: Wrench, blurb: "Online DDL, lock budgets, partitioning and rollback.", prompts: ["Generate a zero-downtime online migration strategy", "Design a partitioning and sharding roadmap for 100M+ rows", "Identify high-risk failure modes & lock contention"] },
 };
 
-export default function AssistantView({ scanId, model }: { scanId: string; model: ModelT | null }) {
+export default function AssistantView({ scanId, model, onOpenHandoff }: { scanId: string; model: ModelT | null; onOpenHandoff?: () => void }) {
   const [mode, setMode] = useState<Mode>("architect");
   const [q, setQ] = useState("");
   const [log, setLog] = useState<Msg[]>([]);
@@ -63,6 +63,13 @@ export default function AssistantView({ scanId, model }: { scanId: string; model
           <p className="mt-1.5 text-[11px] leading-5 text-ink-muted">Answers use only this schema&apos;s model and findings — no invented tables, columns or statistics, and no row data leaves the workspace.</p>
           <div className="mt-3 flex items-center gap-2 text-[11px] text-ink-muted">Engine: <Chip className="bg-muted text-ink ring-line">{provider === "built-in" ? "Built-in, rule-grounded" : provider}</Chip></div>
         </Card>
+        {onOpenHandoff && (
+          <Card className="bg-gradient-to-br from-indigo-500/10 to-violet-500/5">
+            <div className="flex items-center gap-2 text-xs font-bold text-ink"><Sparkles size={14} className="text-indigo-500" />Use ChatGPT / Claude / Cursor</div>
+            <p className="mt-1.5 text-[11px] leading-5 text-ink-muted">Have a ChatGPT Plus, Claude Pro or Cursor subscription instead of an API key? Export a portable Skill or Prompt Pack and verify its reply back here.</p>
+            <button onClick={onOpenHandoff} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2 text-xs font-bold text-white hover:bg-indigo-500">Open AI Handoff <ArrowRight size={12} /></button>
+          </Card>
+        )}
       </div>
 
       <Card padded={false} className="flex h-[calc(100vh-13rem)] min-h-[520px] flex-col overflow-hidden">
