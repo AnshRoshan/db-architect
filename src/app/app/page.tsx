@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowRightLeft, Workflow, Compass, ListChecks, Bot, Cable, CheckCircle2, ChevronDown, Database, FileDiff, FileText, FolderKanban, GitCompareArrows, History, LayoutDashboard, Loader2, LogOut, Menu, Network, Plus, ScanSearch, Settings2, ShieldCheck, TableProperties, X, XCircle } from "lucide-react";
+import { Activity, ArrowRightLeft, Workflow, Compass, ListChecks, Bot, Cable, CheckCircle2, ChevronDown, Database, FileDiff, FileText, FolderKanban, GitCompareArrows, History, LayoutDashboard, Loader2, LogOut, Menu, Network, Plus, ScanSearch, Settings2, ShieldCheck, Sparkles, TableProperties, Wand2, X, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import AuthScreen from "@/components/auth-screen";
 import ExplorerView from "@/components/views/explorer-view";
 import AnalysisView from "@/components/views/analysis-view";
 import AssistantView from "@/components/views/assistant-view";
+import RedesignView from "@/components/views/redesign-view";
+import HandoffView from "@/components/views/handoff-view";
 import { HistoryView, ReportsView } from "@/components/views/share-views";
 import ThemeToggle from "@/components/theme-toggle";
 import Sidebar, { type NavItem, type NavSection } from "@/components/app-shell/sidebar";
@@ -28,10 +30,10 @@ import { FIXTURE_ECOMMERCE_SQL, FIXTURE_SAAS_YAML, FIXTURE_MONGO_JSON, FIXTURE_M
 
 import { normFinding, type FindingRow, type ModelT, type ScanRow } from "@/components/views/types";
 
-const NAV = ["Dashboard", "Architecture", "Connect", "Explorer", "Diagram", "Analysis", "Transform", "Advisor", "Diff & Migrate", "Reports", "AI Assistant", "History", "Roadmap", "Settings"] as const;
+const NAV = ["Dashboard", "Architecture", "Connect", "Explorer", "Diagram", "Analysis", "Redesign", "Transform", "Advisor", "Diff & Migrate", "AI Handoff", "Reports", "AI Assistant", "History", "Roadmap", "Settings"] as const;
 type View = (typeof NAV)[number];
 const viewSlug = (v: string) => v.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "");
-const NAV_ICONS: Record<View, typeof LayoutDashboard> = { Dashboard: LayoutDashboard, Architecture: Workflow, Connect: Cable, Explorer: TableProperties, Diagram: Network, Analysis: ScanSearch, Transform: ArrowRightLeft, Advisor: Compass, "Diff & Migrate": FileDiff, Reports: FileText, "AI Assistant": Bot, History, Roadmap: ListChecks, Settings: Settings2 };
+const NAV_ICONS: Record<View, typeof LayoutDashboard> = { Dashboard: LayoutDashboard, Architecture: Workflow, Connect: Cable, Explorer: TableProperties, Diagram: Network, Analysis: ScanSearch, Redesign: Wand2, Transform: ArrowRightLeft, Advisor: Compass, "Diff & Migrate": FileDiff, "AI Handoff": Sparkles, Reports: FileText, "AI Assistant": Bot, History, Roadmap: ListChecks, Settings: Settings2 };
 const SEV_COLOR: Record<string, string> = { critical: "bg-red-600", high: "bg-orange-500", medium: "bg-amber-500", low: "bg-sky-600", info: "bg-muted0" };
 
 /* ── authenticated application shell ───────────────────── */
@@ -54,6 +56,7 @@ export default function DBArchitect() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [projectDialog, setProjectDialog] = useState(false);
   const [transformTarget, setTransformTarget] = useState<string | undefined>(undefined);
+  const [handoffDraft, setHandoffDraft] = useState<{ brief?: string; targetEngine?: string }>({});
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [projectId, setProjectId] = useState("");
   const [dash, setDash] = useState<DashData | null>(null);
@@ -145,14 +148,14 @@ export default function DBArchitect() {
   const NAV_SECTIONS: NavSection[] = [
     { title: "Overview", ids: ["Dashboard", "Architecture", "Connect"] },
     { title: "Understand", ids: ["Explorer", "Diagram", "Analysis"] },
-    { title: "Decide", ids: ["Transform", "Advisor", "Diff & Migrate"] },
-    { title: "Share", ids: ["Reports", "AI Assistant", "History"] },
+    { title: "Decide", ids: ["Redesign", "Transform", "Advisor", "Diff & Migrate"] },
+    { title: "Share", ids: ["AI Handoff", "Reports", "AI Assistant", "History"] },
     { title: "Workspace", ids: ["Roadmap", "Settings"] },
   ];
   const navItems: NavItem[] = NAV.map((n) => ({
     id: n, label: n, icon: NAV_ICONS[n],
     badge: n === "Analysis" ? (stats.findings ?? 0) || undefined : undefined,
-    isNew: n === "Architecture",
+    isNew: n === "Redesign" || n === "AI Handoff",
   }));
   const paletteItems: PaletteItem[] = [
     ...NAV.map((n) => ({ id: `nav-${n}`, label: n, group: "Go to", icon: NAV_ICONS[n], run: () => go(n) })),
@@ -202,14 +205,16 @@ export default function DBArchitect() {
           {view === "Architecture" && <ArchitectureView projectId={projectId} canWrite={project?.role !== "viewer"} canAdmin={project?.role === "owner" || project?.role === "admin"} onOpenScan={(sid, v) => go(v, sid)} onConnect={() => go("Connect")} onChanged={() => loadDash(projectId)} notify={notify} />}
           {view === "Connect" && (project?.role === "viewer" ? <EmptyState title="Read-only workspace role" hint="Viewers can explore schemas, diagrams and reports. Ask an admin for developer access to import or scan." /> : <ConnectPanel projectId={projectId} stores={dash?.stores ?? []} onImported={(sid) => { setScanId(sid); loadDash(projectId); go("Explorer", sid); }} setMsg={setMsg} />)}
           {view === "Explorer" && <ExplorerView model={model} findings={findings} onOpenDiagram={() => go("Diagram")} onOpenAnalysis={() => go("Analysis")} />}
+          {view === "Redesign" && <RedesignView projectId={projectId} canWrite={project?.role !== "viewer"} onOpenScan={(sid, v) => { loadDash(projectId); go(v, sid); }} onOpenHandoff={(brief, targetEngine) => { setHandoffDraft({ brief, targetEngine }); go("AI Handoff"); }} onTransform={(target) => { setTransformTarget(target); go("Transform"); }} onChanged={() => loadDash(projectId)} notify={notify} />}
           {view === "Transform" && <TransformStudio scanId={scanId} projectId={projectId} canWrite={project?.role !== "viewer"} model={model} initialTarget={transformTarget} onOpenScan={(sid) => { loadDash(projectId); go("Diagram", sid); }} notify={notify} />}
           {view === "Advisor" && <AdvisorPanel model={model} onTransform={(target) => { setTransformTarget(target); go("Transform"); }} />}
           {view === "Roadmap" && <RoadmapPanel />}
           {view === "Diagram" && <DiagramStudio model={model} stored={detail?.layout?.layout ?? null} scanId={scanId} onToast={notify} />}
           {view === "Analysis" && <AnalysisView findings={findings} scanId={scanId} canReview={project?.role === "architect" || project?.role === "admin" || project?.role === "owner"} onStatusChanged={() => loadDash(projectId)} />}
           {view === "Diff & Migrate" && <DiffMigrate projectId={projectId} scans={scans} currentScanId={scanId} setMsg={setMsg} />}
-          {view === "Reports" && <ReportsView scanId={scanId} model={model} findingsCount={findings.length} onOpenDiagram={() => go("Diagram")} />}
-          {view === "AI Assistant" && <AssistantView scanId={scanId} model={model} />}
+          {view === "AI Handoff" && <HandoffView projectId={projectId} scanId={scanId} stores={dash?.stores ?? []} canWrite={project?.role !== "viewer"} initialBrief={handoffDraft.brief} initialTargetEngine={handoffDraft.targetEngine} onOpenScan={(sid, v) => { loadDash(projectId); go(v, sid); }} onChanged={() => loadDash(projectId)} notify={notify} />}
+          {view === "Reports" && <ReportsView projectId={projectId} scanId={scanId} model={model} findingsCount={findings.length} onOpenDiagram={() => go("Diagram")} onOpenHandoff={() => go("AI Handoff")} />}
+          {view === "AI Assistant" && <AssistantView scanId={scanId} model={model} onOpenHandoff={() => go("AI Handoff")} />}
           {view === "History" && <HistoryView projectId={projectId} scans={scans} currentScanId={scanId} onOpen={(id) => go("Explorer", id)} reload={() => loadDash(projectId)} />}
           {view === "Settings" && <WorkspaceSettings projectId={projectId} user={user} onToast={notify} />}
           </ViewFade></AnimatePresence>
@@ -227,6 +232,8 @@ function viewSubtitle(view: View, model: ModelT | null, label?: string) {
   if (view === "Dashboard") return "Workspace health, recent scans and the next useful action.";
   if (view === "Architecture") return "Every datastore in the system, the schemas inside each one, and what crosses between them.";
   if (view === "Connect") return "Import a dump or introspect read-only: PostgreSQL (every schema), MySQL, MongoDB or Redis.";
+  if (view === "Redesign") return "Feed product requirements to get a deterministic gap analysis, target architecture, DDL/RLS/partitioning and cutover roadmap.";
+  if (view === "AI Handoff") return "Export portable Agent Skills (SKILL.md, CLAUDE.md, Cursor .mdc) or ChatGPT prompts — and verify any AI reply deterministically.";
   if (view === "Transform") return "Convert a schema to another engine — decisions, field mapping, live data preview and an ETL runbook.";
   if (view === "Advisor") return "Which database fits the workload? Explainable scoring across ten widely used engines.";
   if (view === "Roadmap") return "Specification status, the top-10 priorities and engine support.";

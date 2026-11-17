@@ -7,7 +7,11 @@ import ArchitectureView from "../src/components/views/architecture-view";
 import DashboardView from "../src/components/views/dashboard-view";
 import ExplorerView from "../src/components/views/explorer-view";
 import ConnectPanel from "../src/components/connect-panel";
+import RedesignView from "../src/components/views/redesign-view";
+import HandoffView from "../src/components/views/handoff-view";
 import { ArchitectureShowcase, type ShowcaseData } from "../src/components/landing-sections";
+import { planRedesign } from "../src/lib/redesign";
+import { buildHandoffExport, verifyProposal } from "../src/lib/handoff";
 import type { ModelT } from "../src/components/views/types";
 import { analyzeArchitecture } from "../src/lib/architecture";
 import { parseMongoJson, parseSqlDdl } from "../src/lib/dsl";
@@ -151,5 +155,38 @@ describe("landing architecture showcase", () => {
     expect(screen.getByText("Circular dependency between schemas")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /Many databases, one system/ }));
     return waitFor(() => expect(screen.getByRole("img", { name: /Topology of the sample system/ })).toBeTruthy());
+  });
+});
+
+describe("Redesign and AI Handoff studios", () => {
+  it("RedesignView renders gaps, target architecture and DDL from the API", async () => {
+    const bp = planRedesign([{ id: "core", name: "commerce-core", engine: "postgres", role: "primary", model: core() }], [], { goal: "multi_tenant", tenancy: "b2b_shared" });
+    mockFetch({ "/api/v1/redesign": { blueprint: bp, blueprints: [] } });
+    render(<Providers><RedesignView projectId="p1" canWrite onOpenScan={vi.fn()} onOpenHandoff={vi.fn()} onTransform={vi.fn()} onChanged={vi.fn()} notify={vi.fn()} /></Providers>);
+    expect(await screen.findByText(/Redesign Blueprint · Deterministic/)).toBeTruthy();
+    expect(screen.getByText(bp.verdict.headline)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /DDL, RLS & migrations/ }));
+    expect(await screen.findByText(/RLS policies & declarative partitioning SQL/)).toBeTruthy();
+  });
+
+  it("HandoffView exports SKILL.md and verifies a round-trip AI proposal", async () => {
+    const r = report();
+    const bundle = buildHandoffExport({
+      projectName: "Commerce",
+      stores: [{ id: "core", name: "commerce-core", engine: "postgres", role: "primary", model: core(), findings: [], designScore: 60 }],
+      flows: [],
+      architecture: r,
+      format: "skill_md",
+      task: "redesign",
+      scope: "system",
+      detail: "compact",
+    });
+    const verified = verifyProposal({ rawInput: "```sql\nCREATE TABLE auth.users (id uuid PRIMARY KEY);\n```", baselineModel: core() });
+    mockFetch({ "/api/v1/handoff": { bundle, verified } });
+    render(<Providers><HandoffView projectId="p1" scanId="s1" stores={[{ id: "core", name: "commerce-core", engine: "postgres", role: "primary" }]} canWrite onOpenScan={vi.fn()} onChanged={vi.fn()} notify={vi.fn()} /></Providers>);
+    expect(await screen.findByText("SKILL.md")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /2 · Verify AI Response/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Try sample AI proposal/ }));
+    expect(await screen.findByText(/Deterministic Verification Report/)).toBeTruthy();
   });
 });

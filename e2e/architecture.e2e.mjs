@@ -145,6 +145,27 @@ if (!found.namespaces) {
   ok("each live scan landed in the intended store", final.stores.find((s) => s.name === "live-core")?.versions === 4 && final.stores.find((s) => s.name === "live-tenants")?.versions === 1);
 }
 
+section("redesign blueprints & AI handoff (round-trip verification)");
+const bp = await call("/api/v1/redesign", { projectId: demoProject, action: "generate", requirements: { goal: "multi_tenant", tenancy: "b2b_shared", scale: "scale", latency: "realtime", compliance: ["pci", "gdpr"], capabilities: ["oltp", "cache", "analytics"], productBrief: "B2B commerce with EU GDPR and 100M order events" } });
+ok("redesign generates gaps, target architecture & RLS/partitioning DDL", bp.status === 200 && bp.blueprint?.gaps?.length >= 4 && bp.blueprint?.verdict?.projectedDesignScore > bp.blueprint?.verdict?.currentDesignScore && bp.blueprint?.artifacts?.supplementarySql?.includes("ENABLE ROW LEVEL SECURITY"), `score ${bp.blueprint?.verdict?.currentDesignScore}->${bp.blueprint?.verdict?.projectedDesignScore}`);
+const savedBp = await call("/api/v1/redesign", { projectId: scratch, action: "save_blueprint", requirements: { goal: "optimize_current" } });
+ok("redesign blueprint persists to postgres", savedBp.status === 201 && Boolean(savedBp.saved?.id));
+const listBp = await call(`/api/v1/redesign?projectId=${scratch}`);
+ok("saved blueprints are retrievable", listBp.blueprints?.some((b) => b.id === savedBp.saved?.id));
+
+const skillExp = await call("/api/v1/handoff", { projectId: demoProject, action: "export", format: "skill_md", task: "redesign", scope: "system", detail: "compact" });
+ok("AI Handoff exports SKILL.md with 0 rows & 0 secrets", skillExp.status === 200 && skillExp.bundle?.filename === "SKILL.md" && skillExp.bundle?.stats?.rowsExported === 0 && skillExp.bundle?.content?.includes("db-architect-proposal"));
+const promptExp = await call("/api/v1/handoff", { projectId: demoProject, action: "export", format: "prompt_pack", task: "fix_findings", scope: "system", detail: "standard", productRequirements: "Fix all critical findings" });
+ok("AI Handoff exports ChatGPT/Claude prompt pack", promptExp.status === 200 && promptExp.bundle?.content?.includes("commerce-core") && promptExp.bundle?.content?.includes("commerce-cache"));
+
+const sampleReply = "```db-architect-proposal\n" + JSON.stringify({ format: "db-architect/proposal/v1", title: "Clean test schema", summary: "Adds PK and CDC.", targetEngine: "postgres", sql: "CREATE SCHEMA IF NOT EXISTS auth;\nCREATE TABLE auth.users (id uuid PRIMARY KEY, email text NOT NULL, password text NOT NULL);", architectureChanges: { flows: [{ from: "commerce-core", to: "commerce-content", kind: "cdc" }] } }) + "\n```";
+const ver = await call("/api/v1/handoff", { projectId: demoProject, action: "verify", rawInput: sampleReply, baselineScanId: pgScan.id });
+ok("AI Handoff verifies external AI reply & catches regressions", ver.status === 200 && ver.verified?.comparison?.regressions?.some((r) => r.ruleId === "PG-SEC-001") && ver.verified?.architecturePreview?.resolvedArchFindings?.some((f) => f.ruleId === "ARCH-001"), `regressions=${ver.verified?.comparison?.regressions?.length}`);
+
+const sysRep = await fetch(`${B}/api/v1/reports?scope=system&projectId=${demoProject}&format=markdown`, { headers: { Authorization: `Bearer ${token}` } });
+const sysRepText = await sysRep.text();
+ok("Full system architecture report downloads cleanly with bearer auth", sysRep.status === 200 && sysRepText.includes("System Architecture Report") && sysRepText.includes("commerce-core"));
+
 } finally {
   // leave the workspace as we found it
   if (scratch) {

@@ -10,7 +10,7 @@ import { engineLabel, namespaceLabel } from "@/lib/engines";
 import { FIXTURE_ECOMMERCE_SQL, FIXTURE_MONGO_JSON, FIXTURE_MYSQL_SQL, FIXTURE_SAAS_YAML } from "@/lib/fixtures";
 import type { Finding, ModelT, ScanRow } from "./types";
 
-export type DashTarget = "Architecture" | "Connect" | "Explorer" | "Diagram" | "Analysis" | "Transform" | "Advisor" | "Diff & Migrate" | "Reports" | "AI Assistant" | "History";
+export type DashTarget = "Architecture" | "Connect" | "Explorer" | "Diagram" | "Analysis" | "Redesign" | "Transform" | "Advisor" | "Diff & Migrate" | "AI Handoff" | "Reports" | "AI Assistant" | "History";
 export type StoreCard = { id: string; name: string; engine: string; role: string; scanId: string | null; versions: number; entities: number; namespaces: number; findings: number; designScore: number | null };
 export type DashData = { stats?: Record<string, unknown>; recentScans?: ScanRow[]; latestScanId?: string | null; stores?: StoreCard[] };
 
@@ -142,8 +142,8 @@ function Guide({ scans, stores, flows, totalFindings, bySeverity, findings, mode
   const done = steps.filter((s) => s.done).length;
   const journeys: { title: string; desc: string; views: [DashTarget, string][]; icon: LucideIcon; tone: string }[] = [
     { title: "Understand", desc: "The system map, every schema, the diagram and findings with evidence.", views: [["Architecture", "Architecture"], ["Explorer", "Explorer"], ["Diagram", "Diagram"], ["Analysis", "Analysis"]], icon: TableProperties, tone: "from-sky-500/12" },
-    { title: "Decide", desc: "Convert engines, ask which database fits, and generate migrations.", views: [["Transform", "Transform"], ["Advisor", "Advisor"], ["Diff & Migrate", "Diff"]], icon: GitBranch, tone: "from-violet-500/12" },
-    { title: "Share", desc: "Export reports, ask the assistant, and review version history.", views: [["Reports", "Reports"], ["AI Assistant", "Assistant"], ["History", "History"]], icon: FileText, tone: "from-emerald-500/12" },
+    { title: "Decide", desc: "Redesign for product needs, convert engines, choose databases and generate migrations.", views: [["Redesign", "Redesign"], ["Transform", "Transform"], ["Advisor", "Advisor"], ["Diff & Migrate", "Diff"]], icon: GitBranch, tone: "from-violet-500/12" },
+    { title: "Share", desc: "Export AI Skills & ChatGPT prompts, download reports and review version history.", views: [["AI Handoff", "AI Handoff"], ["Reports", "Reports"], ["AI Assistant", "Assistant"], ["History", "History"]], icon: FileText, tone: "from-emerald-500/12" },
   ];
   return (
     <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
