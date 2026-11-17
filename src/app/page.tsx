@@ -167,8 +167,8 @@ export default function Home() {
           <Bento className="md:col-span-3" icon={Compass} title="Which database fits?" text="Describe the workload and get a transparent ranking of ten widely used engines, honest watch-outs and polyglot suggestions instead of one database for everything.">
             <div className="flex flex-wrap gap-1.5">{example.ranked.slice(0, 4).map((r, i) => <span key={r.id} className="flex items-center gap-1.5 rounded-lg border border-line bg-muted py-1 pl-1 pr-2 text-[11px] font-semibold text-ink"><EngineBadge engine={r.label} size={20} className="!rounded-md" />{r.label}<span className="font-mono text-ink-muted">{r.score}</span>{i === 0 && <span className="rounded bg-emerald-500/15 px-1 text-[9px] text-emerald-600 dark:text-emerald-300">best fit</span>}</span>)}</div>
           </Bento>
-          <Bento className="md:col-span-3" icon={FileText} title="Docs your team will read" text="HTML, Markdown and JSON reports with the diagram, the inventory, the findings and the analysis limitations built in — plus a grounded assistant that cites rule ids.">
-            <div className="flex flex-wrap gap-1.5">{["report.html", "schema.md", "findings.json", "diagram.svg", "migration-up.sql"].map((f) => <span key={f} className="rounded-lg border border-line bg-muted px-2 py-1 font-mono text-[11px] text-ink-muted">{f}</span>)}</div>
+          <Bento className="md:col-span-3" icon={FileText} title="Portable AI Skills & ChatGPT Handoff" text="No API key needed. Export metadata-only SKILL.md, CLAUDE.md, Cursor .mdc or ChatGPT prompt packs — then paste your AI's reply back for deterministic verification and regression catching.">
+            <div className="flex flex-wrap gap-1.5">{["SKILL.md", "CLAUDE.md", "db-architect.mdc", "AGENTS.md", "prompt.md", "system-report.html"].map((f) => <span key={f} className="rounded-lg border border-line bg-muted px-2 py-1 font-mono text-[11px] text-ink-muted">{f}</span>)}</div>
           </Bento>
         </RevealGroup>
       </section>
