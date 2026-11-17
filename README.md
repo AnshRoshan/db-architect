@@ -156,6 +156,23 @@ HTML, Markdown and JSON reports containing the diagram, the inventory, the
 findings and the analysis limitations — plus `schema.md`, `findings.json`,
 `diagram.svg` and `migration-up.sql` for your pipeline.
 
+### Portable AI handoff and Agent Skills
+
+Export a metadata-only context pack (no rows, no credentials) for whichever AI
+tool you already pay for: `SKILL.md`, `CLAUDE.md`, a Cursor `.mdc`, `AGENTS.md`,
+a plain ChatGPT prompt pack, or raw context JSON. Then paste any proposal back
+in and DB Architect parses it, diffs it against the real schema and verifies it
+deterministically — regressions are caught before anything is applied. Handoff
+works with zero API keys.
+
+### Requirements-driven redesign
+
+Describe the product brief, scale, latency, tenancy, consistency, compliance
+and capability needs, and the redesign engine scores the system's actual
+datastores against them and emits a concrete blueprint with real before/after
+verification — engine choices, store roles, schema changes and a generated
+migration to review.
+
 ---
 
 ## Supported engines

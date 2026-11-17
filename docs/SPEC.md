@@ -150,10 +150,11 @@ Engines scored: PostgreSQL, MySQL, SQLite, SQL Server, MongoDB, Redis, DynamoDB,
 
 ## 8. Testing
 
-`bun run test` (`vitest run`) — 74 tests across 6 files: dialect detection, MySQL/SQLite/PG parsing (incl. regression for dropped DEFAULTs),
+`bun run test` (`vitest run`) — 90 tests across 8 files: dialect detection, MySQL/SQLite/PG parsing (incl. regression for dropped DEFAULTs),
 analysis relabelling, every transform direction, ETL scripts `node --check`ed for 8 engine pairs, advisor
 rankings, migrations (transaction safety, MySQL non-transactional DDL), the multi-store architecture model
-(stores, roles, flows, cross-store links), the Redis key model, the grounded assistant, and UI/DOM behaviour
+(stores, roles, flows, cross-store links), the Redis key model, the grounded assistant, redesign blueprints,
+AI handoff export/round-trip verification, internal audit invariants, and UI/DOM behaviour
 (incl. session transport).
 
 End-to-end scripts live in `e2e/` and need a running app: `bun run e2e` (HTTP-level, multi-schema +
@@ -209,3 +210,15 @@ Keys are grouped into patterns (`session:{session_id}`); each pattern is an enti
 - Flows are documentation supplied by the user; replication lag and real traffic are not measured.
 - Live Redis and live MySQL multi-database scans are implemented and type-checked but have not been run against real servers in the build sandbox. Live PostgreSQL multi-schema introspection is verified end to end (`e2e/architecture.e2e.mjs`).
 - MongoDB is still sampled one database per datastore.
+
+## 11. Requirements-driven Redesign Studio & Portable AI Handoff
+
+**Redesign Studio (`src/lib/redesign.ts`, `/api/v1/redesign`, `RedesignView`)**
+- Accepts structured product requirements (goal, scale, latency SLO, tenancy, consistency, compliance, capabilities, target engine, ops profile) plus a free-text product brief whose signals are extracted deterministically.
+- Audits the project's actual datastores, schemas, findings and cross-store topology to produce a grounded Gap Analysis, Target System Architecture (stores + roles + data flows), synthesized target `SchemaModel` (fixing missing PKs, duplicate/invalid indexes, float money, 32-bit growth PKs, schema cycles; adding `tenant_id` + PostgreSQL RLS, monthly `PARTITION BY RANGE`, Redis TTL policies, or cross-engine conversion via `planTransform`), real Before vs. After deterministic scores, DDL/migration artifacts, and a four-phase zero-downtime cutover roadmap.
+- Blueprints can be persisted (`redesign_blueprints`), materialized as an immutable `schema_versions` snapshot, or applied to Architecture (stores & flows).
+
+**Portable AI Handoff, Agent Skills & Round-Trip Verification (`src/lib/handoff.ts`, `/api/v1/handoff`, `HandoffView`)**
+- Designed for teams who use ChatGPT Plus, Claude Pro, Claude Code, Cursor, Codex or Gemini without configuring API keys inside DB Architect.
+- **Export** (metadata-only � 0 rows, 0 credentials, token-budgeted): ChatGPT/Claude Prompt Pack (with `db-architect/proposal/v1` round-trip output contract), Agent Skill (`SKILL.md` with YAML frontmatter), `CLAUDE.md`, `.cursor/rules/db-architect.mdc`, `AGENTS.md`, and canonical JSON (`db-architect/context/v1`).
+- **Round-trip Verify**: Accepts raw AI replies (prose + fenced `db-architect-proposal`, fenced SQL DDL, YAML/JSON DSL, MongoDB JSON, or Redis key dumps), parses them into a canonical `SchemaModel`, runs `validateModel` + `analyzeModel` + `diffModels` + `generateMigration` + `analyzeArchitecture`, reports fixed findings and catches new regressions introduced by the AI before saving or applying anything.
